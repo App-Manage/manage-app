@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Office Management</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0">
+  <style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+  :root{
+    --primary:#1B4B43;
+    --primary-light:#2E7D5B;
+    --accent:#C9A227;
+    --danger:#C0392B;
+    --danger-light:#E85D4A;
+    --success:#2E7D5B;
+    --bg:#F2F5F4;
+    --surface:rgba(255,255,255,0.72);
+    --surface-solid:#ffffff;
+    --text:#16241F;
+    --text-mute:#5C6F69;
+    --border:rgba(27,75,67,0.12);
+    --radius-lg:22px;
+    --radius-md:16px;
+    --radius-sm:10px;
+    --shadow:0 8px 30px rgba(16,40,35,0.10);
+    --gradient-primary:linear-gradient(135deg,#1B4B43 0%,#2E7D5B 60%,#3E9E74 100%);
+    --gradient-gold:linear-gradient(135deg,#C9A227 0%,#E9C766 100%);
+    --font-display:'Poppins',sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+  }
+
+  body[data-theme="dark"]{
+    --bg:#0E1613;
+    --surface:rgba(24,36,32,0.68);
+    --surface-solid:#182420;
+    --text:#EAF2EF;
+    --text-mute:#8FA69E;
+    --border:rgba(255,255,255,0.08);
+    --shadow:0 8px 30px rgba(0,0,0,0.35);
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--font-display);
+    background:var(--bg);
+    color:var(--text);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    transition:background .35s ease, color .35s ease;
+  }
+
+  #app{ display:flex; flex-direction:column; height:100vh; }
+
+  /* ---------- TOP BAR ---------- */
+  .topbar{
+    display:flex; align-items:center; gap:10px;
+    padding:14px 16px 10px;
+    background:var(--gradient-primary);
+    color:#fff;
+    flex-shrink:0;
+  }
+  .topbar .logo{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .topbar .company{font-weight:700;font-size:14.5px;flex:1;line-height:1.2;}
+  .topbar .company small{display:block;font-weight:400;font-size:10.5px;opacity:.85;}
+  .topbar .clock{font-family:var(--font-mono);font-size:12px;text-align:right;opacity:.95;}
+
+  /* ---------- CONTENT ---------- */
+  .content{flex:1; overflow-y:auto; padding:16px 14px 90px; scroll-behavior:smooth;}
+  .content::-webkit-scrollbar{width:4px;}
+  .content::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+  .page{display:none; animation:fadeSlide .32s ease;}
+  .page.active{display:block;}
+  @keyframes fadeSlide{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
+
+  h1,h2,h3{font-family:var(--font-display); letter-spacing:-0.01em;}
+  .section-title{font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-mute); margin:18px 0 10px;}
+
+  /* ---------- CARD / GLASS ---------- */
+  .card{
+    background:var(--surface);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .card-flat{background:var(--surface-solid); border-radius:var(--radius-md); border:1px solid var(--border); padding:14px; margin-bottom:12px;}
+
+ .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:10px; min-width:0;}
+.grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; min-width:0;}
+
+.stat-mini{background:var(--surface-solid); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 8px; min-width:0; overflow:hidden;}
+.stat-mini .num{font-family:var(--font-mono); font-size:clamp(13px,4vw,19px); font-weight:700; color:var(--primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+body[data-theme="dark"] .stat-mini .num{color:#6FD9A7;}
+.stat-mini .label{font-size:10.5px; color:var(--text-mute); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+
+  /* ---------- PROGRESS RING (signature element) ---------- */
+  .ring-row{display:flex; gap:12px; margin-bottom:6px;}
+  .ring-card{flex:1; text-align:center; padding:18px 10px;}
+  .ring-wrap{position:relative; width:104px; height:104px; margin:0 auto 8px;}
+  .ring-wrap svg{transform:rotate(-90deg); width:100%; height:100%;}
+  .ring-bg{fill:none; stroke:var(--border); stroke-width:9;}
+  .ring-fg{fill:none; stroke-width:9; stroke-linecap:round; transition:stroke-dashoffset 1s cubic-bezier(.3,1,.4,1), stroke .4s ease;}
+  .ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .ring-center .amount{font-family:var(--font-mono); font-weight:700; font-size:15px;}
+  .ring-card .ring-label{font-size:11.5px; font-weight:600; color:var(--text-mute); margin-top:2px;}
+  .ring-card.merah .ring-fg{stroke:var(--danger)!important;}
+  .ring-card.merah{animation:pulseRed 1.4s ease-in-out infinite;}
+  @keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0);} 50%{box-shadow:0 0 22px 2px rgba(192,57,43,0.35);}}
+
+  .delta-badge{display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; font-family:var(--font-mono);}
+  .delta-up{color:var(--success); background:rgba(46,125,91,0.12);}
+  .delta-down{color:var(--danger); background:rgba(192,57,43,0.12);}
+
+  /* ---------- BUTTONS ---------- */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    border:none; border-radius:var(--radius-sm); padding:11px 16px;
+    font-family:var(--font-display); font-weight:600; font-size:13.5px;
+    cursor:pointer; transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:active{transform:scale(.96);}
+  .btn-primary{background:var(--gradient-primary); color:#fff; box-shadow:0 6px 16px rgba(27,75,67,0.30);}
+  .btn-gold{background:var(--gradient-gold); color:#3a2c00; box-shadow:0 6px 16px rgba(201,162,39,0.30);}
+  .btn-outline{background:transparent; border:1.5px solid var(--border); color:var(--text);}
+  .btn-danger{background:var(--danger); color:#fff;}
+  .btn-block{width:100%;}
+  .btn-sm{padding:7px 12px; font-size:12px;}
+  .btn-icon{width:36px;height:36px;padding:0;border-radius:50%;background:var(--surface-solid);border:1px solid var(--border);color:var(--text);}
+
+  /* ---------- FORM ---------- */
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12px; font-weight:600; color:var(--text-mute); margin-bottom:5px;}
+  .field input, .field select, .field textarea{
+    width:100%; padding:10px 12px; border-radius:var(--radius-sm);
+    border:1.5px solid var(--border); background:var(--surface-solid); color:var(--text);
+    font-family:var(--font-display); font-size:13.5px; outline:none; transition:border .15s ease;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{border-color:var(--primary-light);}
+
+  /* nominal input positif/negatif */
+  .nominal-input{font-family:var(--font-mono); font-weight:700;}
+  .nominal-input.neg{color:var(--danger);}
+  .nominal-input.pos{color:var(--success);}
+
+  /* ---------- LIST ITEM ---------- */
+  .list-item{
+    display:flex; align-items:center; gap:10px;
+    background:var(--surface-solid); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:10px 12px; margin-bottom:8px;
+  }
+  .avatar{width:38px;height:38px;border-radius:12px;background:var(--gradient-primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0;}
+  .list-item .main{flex:1; min-width:0;}
+  .list-item .title{font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .list-item .sub{font-size:11.5px; color:var(--text-mute);}
+  .badge{font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px;}
+  .badge-green{background:rgba(46,125,91,.15); color:var(--success);}
+  .badge-red{background:rgba(192,57,43,.15); color:var(--danger);}
+  .badge-gold{background:rgba(201,162,39,.18); color:#8a6d00;}
+  .badge-mute{background:var(--border); color:var(--text-mute);}
+
+  /* ---------- BOTTOM NAV ---------- */
+  .bottomnav{
+    position:fixed; left:0; right:0; bottom:0;
+    display:flex; justify-content:space-around;
+    background:var(--surface-solid); border-top:1px solid var(--border);
+    padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+    box-shadow:0 -6px 20px rgba(0,0,0,.06);
+    z-index:50;
+  }
+  .navitem{
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    font-size:9.5px; color:var(--text-mute); cursor:pointer; flex:1;
+    padding:5px 2px; border-radius:12px; transition:all .2s ease; font-weight:600;
+  }
+  .navitem .material-symbols-outlined{font-size:20px;}
+  .navitem.active{color:var(--primary);}
+  body[data-theme="dark"] .navitem.active{color:#6FD9A7;}
+  .navitem.active{background:rgba(27,75,67,0.08);}
+
+  /* ---------- LOADING ---------- */
+  .loader-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.25); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:999;
+  }
+  .loader-overlay.show{display:flex;}
+  .loader-ring{width:44px; height:44px; border-radius:50%; border:4px solid rgba(255,255,255,.35); border-top-color:#fff; animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------- CHIP FILTER ---------- */
+  .chips{display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin-bottom:10px;}
+  .chip{
+    padding:6px 13px; border-radius:20px; font-size:12px; font-weight:600;
+    background:var(--surface-solid); border:1px solid var(--border); color:var(--text-mute);
+    white-space:nowrap; cursor:pointer; flex-shrink:0;
+  }
+  .chip.active{background:var(--gradient-primary); color:#fff; border-color:transparent;}
+
+  .empty-state{text-align:center; padding:30px 10px; color:var(--text-mute);}
+  .empty-state .material-symbols-outlined{font-size:38px; opacity:.4;}
+
+  .fab{
+    position:fixed; right:18px; bottom:78px; width:50px; height:50px; border-radius:50%;
+    background:var(--gradient-primary); color:#fff; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 10px 24px rgba(27,75,67,.4); border:none; cursor:pointer; z-index:40;
+  }
+
+  .material-symbols-outlined{ font-variation-settings:'FILL' 0,'wght' 500,'GRAD' 0,'opsz' 24; vertical-align:middle;}
+
+  ::selection{background:var(--accent); color:#fff;}
+  .card-flat.merah{
+  border-color:var(--danger);
+  animation:pulseRed 1.4s ease-in-out infinite;
+}
+
+.global-warning-banner{
+  display:flex; align-items:center; gap:8px;
+  background:var(--danger); color:#fff;
+  padding:8px 14px; font-size:12.5px; font-weight:600;
+  cursor:pointer; flex-shrink:0;
+  animation:pulseRed 1.4s ease-in-out infinite;
+}
+.global-warning-banner.perhatian{ background:#C9A227; color:#3a2c00; }
+.global-warning-banner.hidden{ display:none; }
+.global-warning-banner .material-symbols-outlined{ font-size:18px; }
+.global-warning-banner span#globalWarningText{ flex:1; }
+.gw-mute-btn{
+  background:rgba(255,255,255,0.25); border:none; border-radius:8px;
+  color:inherit; width:26px; height:26px; cursor:pointer; font-size:13px;
+}
+
+.bottomnav {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* biar smooth di iOS */
+  white-space: nowrap;
+  scrollbar-width: none; /* sembunyiin scrollbar di firefox */
+}
+
+.bottomnav::-webkit-scrollbar {
+  display: none; /* sembunyiin scrollbar di chrome/safari */
+}
+
+.bottomnav .nav-item {
+  flex: 0 0 auto; /* PENTING: jangan pakai flex:1, biar item nggak dipaksa nyempit */
+  min-width: 64px; /* atau sesuai ukuran icon+label lo */
+}
+</style>
+
+</head>
+<body data-theme="light">
+  <div id="app">
+
+    <div class="topbar">
+      <div class="logo">🏢</div>
+      <div class="company">
+        <span id="companyName">Perusahaan Saya</span>
+        <small><span id="dayName">-</span> · <span id="dateDisplay">-</span></small>
+      </div>
+      <div class="clock" id="clockDisplay">00:00:00</div>
+    </div>
+
+    <div class="global-warning-banner hidden" id="globalWarningBanner" onclick="showGlobalWarningDetail()">
+  <span class="material-symbols-outlined" id="globalWarningIcon">warning</span>
+  <span id="globalWarningText">Ada peringatan</span>
+  <button class="gw-mute-btn" onclick="event.stopPropagation(); muteGlobalWarningSound()">🔇</button>
+</div>
+
+    <div class="content" id="content">
+      <div class="page active" id="page-dashboard">
+
+  <div class="ring-row">
+    <div class="card ring-card" id="ringUsdCard">
+      <div class="ring-wrap">
+        <svg viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
+          <circle class="ring-fg" id="ringUsd" cx="50" cy="50" r="42" stroke="#2E7D5B"></circle>
+        </svg>
+        <div class="ring-center">
+          <div class="amount" id="valUsd">$0.00</div>
+        </div>
+      </div>
+      <div class="ring-label">💵 SALDO USD</div>
+    </div>
+
+    <div class="card ring-card" id="ringKhrCard">
+      <div class="ring-wrap">
+        <svg viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
+          <circle class="ring-fg" id="ringKhr" cx="50" cy="50" r="42" stroke="#C9A227"></circle>
+        </svg>
+        <div class="ring-center">
+          <div class="amount" id="valKhr">៛0</div>
+        </div>
+      </div>
+      <div class="ring-label">🇰🇭 SALDO RIEL</div>
+    </div>
+  </div>
+
+  <div class="card-flat grid-3">
+    <div class="stat-mini"><div class="num" id="statKaryawan">0</div><div class="label">Total Karyawan</div></div>
+    <div class="stat-mini"><div class="num" id="statHadir">0</div><div class="label">Hadir Hari Ini</div></div>
+    <div class="stat-mini"><div class="num" id="statAlpha">0</div><div class="label">Tidak Hadir</div></div>
+  </div>
+
+  <div class="card-flat grid-3" style="margin-top:10px;">
+    <div class="stat-mini"><div class="num" id="statKas">$0</div><div class="label">Total Kas</div></div>
+    <div class="stat-mini"><div class="num" id="statModal">$0</div><div class="label">Total Modal</div></div>
+    <div class="stat-mini"><div class="num" id="statHak">$0</div><div class="label">Hak Pribadi</div></div>
+  </div>
+
+ <div class="section-title">Pemisahan Dana</div>
+<div class="card-flat grid-3">
+  <div class="stat-mini"><div class="num" id="statDanaPribadi">$0</div><div class="label">💰 Pribadi</div></div>
+  <div class="stat-mini"><div class="num" id="statDanaTitipan">$0</div><div class="label">🤝 Titipan</div></div>
+  <div class="stat-mini"><div class="num" id="statTabungan">$0</div><div class="label">🏦 Tabungan</div></div>
+</div>
+
+<div class="section-title">Rincian Titipan per Nama</div>
+<div id="titipanDetailList"></div>
+
+<div class="section-title">Status Saldo Merah</div>
+<div class="grid-2">
+  <div class="card-flat" id="merahGabunganCard" style="text-align:center;">
+    <div style="font-size:11px;color:var(--text-mute);font-weight:600;margin-bottom:4px;">GABUNGAN</div>
+    <div id="statMerahGabungan" style="font-family:var(--font-mono);font-size:15px;font-weight:700;">AMAN</div>
+  </div>
+  <div class="card-flat" id="merahPribadiCard" style="text-align:center;">
+    <div style="font-size:11px;color:var(--text-mute);font-weight:600;margin-bottom:4px;">PRIBADI</div>
+    <div id="statMerahPribadi" style="font-family:var(--font-mono);font-size:15px;font-weight:700;">AMAN</div>
+  </div>
+</div>
+
+ <div class="section-title">Anggaran Harian</div>
+<div class="card-flat grid-3" id="budgetCard">
+  <div class="stat-mini"><div class="num" id="budgetLimit">$0.00</div><div class="label">Limit Harian</div></div>
+  <div class="stat-mini"><div class="num" id="budgetSpent">$0.00</div><div class="label">Terpakai</div></div>
+  <div class="stat-mini"><div class="num" id="budgetSisa">$0.00</div><div class="label">Sisa Hari Ini</div></div>
+</div>
+
+<div class="card-flat grid-2" id="budgetBreakdownCard" style="margin-top:-4px;">
+  <div class="stat-mini"><div class="num" id="budgetPribadi">$0.00</div><div class="label">💰 Dari Pribadi</div></div>
+  <div class="stat-mini"><div class="num" id="budgetTabungan">$0.00</div><div class="label">🏦 Dari Tabungan</div></div>
+</div>
+
+<div id="budgetKategoriList"></div>
+<div class="section-title">🧺 Laundry Bulan Ini</div>
+<div class="card-flat grid-3" id="dashLaundryCard">
+  <div class="stat-mini"><div class="num" id="dashLdrCount">0/0</div><div class="label">Dilakukan</div></div>
+  <div class="stat-mini"><div class="num" id="dashLdrBiaya">0៛</div><div class="label">Pengeluaran</div></div>
+  <div class="stat-mini"><div class="num" id="dashLdrSisaBudget">0៛</div><div class="label">Sisa Budget</div></div>
+</div>
+
+<div class="section-title">Proyeksi Tabungan Akhir Bulan</div>
+<div class="card-flat" id="dashProyeksiCard" style="text-align:center;">
+  <div style="font-size:11px;color:var(--text-mute);font-weight:600;margin-bottom:4px;">ESTIMASI TABUNGAN AKHIR BULAN</div>
+  <div id="dashProyeksiNum" style="font-family:var(--font-mono);font-size:20px;font-weight:700;">$0.00</div>
+  <div style="font-size:11px;color:var(--text-mute);margin-top:4px;">Target: $<span id="dashProyeksiTarget">0</span></div>
+</div>
+
+  <div class="section-title">Grafik Kehadiran (7 Hari)</div>
+  <div class="card"><div id="chartAttendance" style="width:100%;height:170px;"></div></div>
+
+  <div class="section-title">Grafik Keuangan (Tren Saldo)</div>
+  <div class="card"><div id="chartFinance" style="width:100%;height:170px;"></div></div>
+
+  <div class="section-title">Proporsi Dana per Pemilik</div>
+<div class="chips">
+  <div class="chip active" data-j="Pribadi" onclick="setPieJenis('Pribadi')">💰 Pribadi</div>
+  <div class="chip" data-j="Titipan" onclick="setPieJenis('Titipan')">🤝 Titipan</div>
+  <div class="chip" data-j="Tabungan" onclick="setPieJenis('Tabungan')">🏦 Tabungan</div>
+</div>
+<div class="card"><div id="chartOwnerPie" style="width:100%;height:190px;"></div></div>
+
+</div>
+
+<script>
+function loadDashboard() {
+  callServer('getDashboardData', [], renderDashboard, null, true);
+  callServer('getBudgetStatus', [], renderBudgetStatus, null, true);
+  callServer('getLaundryStatus', [], renderDashLaundry, null, true);       // 👈 baru
+  callServer('getSavingsProjection', [], renderDashProyeksi, null, true);  // 👈 baru
+}
+
+function renderDashLaundry(s) {
+  document.getElementById('dashLdrCount').textContent = s.jumlahLaundry + '/' + s.estimasiPerBulan;
+  document.getElementById('dashLdrBiaya').textContent = Math.round(s.totalBiaya).toLocaleString() + '៛';
+  document.getElementById('dashLdrSisaBudget').textContent = Math.round(s.sisaBudget).toLocaleString() + '៛';
+  document.getElementById('dashLaundryCard').classList.toggle('merah', s.status === 'bahaya');
+}
+
+function renderDashProyeksi(p) {
+  const el = document.getElementById('dashProyeksiNum');
+  el.textContent = '$' + p.proyeksiTabungan.toFixed(2);
+  el.style.color = p.targetTerancam ? 'var(--danger)' : 'var(--success)';
+  document.getElementById('dashProyeksiTarget').textContent = p.targetTabungan.toFixed(0);
+  document.getElementById('dashProyeksiCard').classList.toggle('merah', p.targetTerancam);
+}
+
+function renderBudgetStatus(b) {
+  document.getElementById('budgetLimit').textContent = '$' + b.limitHarian.toFixed(2);
+  document.getElementById('budgetSpent').textContent = '$' + b.pengeluaranHariIni.toFixed(2);
+
+  const sisaEl = document.getElementById('budgetSisa');
+  sisaEl.textContent = '$' + b.sisaHarian.toFixed(2);
+  sisaEl.style.color = b.sisaHarian < 0 ? 'var(--danger)' : 'var(--success)';
+
+  const card = document.getElementById('budgetCard');
+  card.classList.toggle('merah', b.melebihiLimit);
+  if (b.melebihiLimit) alertBudgetMerah(b.kelebihan);
+
+  // Breakdown per kategori dana
+  document.getElementById('budgetPribadi').textContent = '$' + Number(b.pengeluaranPribadi || 0).toFixed(2);
+  document.getElementById('budgetTabungan').textContent = '$' + Number(b.pengeluaranTabungan || 0).toFixed(2);
+
+  // Rincian per kategori transaksi (Operasional, Gaji, dll)
+  renderBudgetKategoriList(b.rincianKategori || []);
+}
+
+function renderBudgetKategoriList(list) {
+  const container = document.getElementById('budgetKategoriList');
+  if (!list.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = `
+    <div class="section-title">Rincian Pengeluaran Hari Ini</div>
+    ${list.map(k => `
+      <div class="list-item">
+        <div class="main"><div class="title">${k.kategori}</div></div>
+        <span class="badge badge-red">$${k.total.toFixed(2)}</span>
+      </div>
+    `).join('')}
+  `;
+}
+  function renderDashboard(data) {
+  animateCounter(document.getElementById('valUsd'), data.saldoUSD, '$', 2);
+  animateCounter(document.getElementById('valKhr'), data.saldoKHR, '៛', 0);
+
+  document.getElementById('statKaryawan').textContent = data.totalKaryawan;
+  document.getElementById('statHadir').textContent = data.hadirHariIni;
+  document.getElementById('statAlpha').textContent = data.tidakHadir;
+  document.getElementById('statKas').textContent = '$' + Number(data.totalKas).toFixed(2);
+  document.getElementById('statModal').textContent = '$' + Number(data.totalModal).toFixed(2);
+  document.getElementById('statHak').textContent = '$' + Number(data.hakPribadi).toFixed(2);
+  document.getElementById('statDanaPribadi').textContent = '$' + Number(data.totalDanaPribadi || 0).toFixed(2);
+  document.getElementById('statDanaTitipan').textContent = '$' + Number(data.totalDanaTitipan || 0).toFixed(2);
+  document.getElementById('statTabungan').textContent = '$' + Number(data.totalTabungan || 0).toFixed(2);
+
+  const pct = data.totalModal > 0 ? Math.min(100, (data.totalKas / (data.totalModal * 1.5)) * 100) : 100;
+  setRing(document.getElementById('ringUsd'), pct);
+  setRing(document.getElementById('ringKhr'), pct);
+
+  renderMerahCard('merahGabunganCard', 'statMerahGabungan', data.merahGabungan, data.kekuranganGabungan);
+  renderMerahCard('merahPribadiCard', 'statMerahPribadi', data.merahPribadi, data.kekuranganPribadi);
+  renderTitipanDetail(data.titipanDetail || []);
+
+  const usdCard = document.getElementById('ringUsdCard');
+  const khrCard = document.getElementById('ringKhrCard');
+  usdCard.classList.toggle('merah', data.merahGabungan);
+  khrCard.classList.toggle('merah', data.merahGabungan);
+
+  google.charts.setOnLoadCallback(() => {
+  drawAttendanceChart();
+  drawFinanceChart();
+  drawOwnerPie();   // 👈 tidak perlu param lagi, ambil data sendiri sesuai tab aktif
+});
+}
+  function renderTitipanDetail(list) {
+  const container = document.getElementById('titipanDetailList');
+  if (!list.length) {
+    container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">handshake</span><div>Belum ada dana titipan</div></div>';
+    return;
+  }
+  container.innerHTML = list.map(o => `
+    <div class="list-item">
+      <div class="avatar" style="background:${o.warna};">${o.icon}</div>
+      <div class="main">
+        <div class="title">${o.nama}</div>
+        <div class="sub">Saldo Titipan</div>
+      </div>
+      <span class="badge badge-gold">$${o.saldoUSD.toFixed(2)}</span>
+    </div>
+  `).join('');
+}
+
+function renderMerahCard(cardId, textId, merah, kekurangan) {
+  const card = document.getElementById(cardId);
+  const text = document.getElementById(textId);
+  card.classList.toggle('merah', merah);
+  text.textContent = merah ? ('MERAH -$' + Number(kekurangan).toFixed(2)) : 'AMAN';
+  text.style.color = merah ? 'var(--danger)' : 'var(--success)';
+}
+
+  function drawAttendanceChart() {
+    callServer('getAttendanceChartData', [], (rows) => {
+      const arr = [['Tanggal', 'Hadir', 'Izin', 'Sakit', 'Alpha']];
+      rows.forEach(r => arr.push([r.tanggal.slice(5), r.hadir, r.izin, r.sakit, r.alpha]));
+      const data = google.visualization.arrayToDataTable(arr);
+      const chart = new google.visualization.ColumnChart(document.getElementById('chartAttendance'));
+      chart.draw(data, {
+        legend: { position: 'top', textStyle: { fontSize: 10 } },
+        colors: ['#2E7D5B', '#C9A227', '#5C6F69', '#C0392B'],
+        chartArea: { width: '90%', height: '70%' },
+        backgroundColor: 'transparent', isStacked: true,
+        hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 9 } }
+      });
+    }, null, true);
+  }
+
+  function drawFinanceChart() {
+    callServer('getFinanceChartData', [], (rows) => {
+      const arr = [['Tanggal', 'Saldo (USD)']];
+      rows.forEach(r => arr.push([r.tanggal.slice(5), r.saldo]));
+      if (arr.length === 1) arr.push(['-', 0]);
+      const data = google.visualization.arrayToDataTable(arr);
+      const chart = new google.visualization.AreaChart(document.getElementById('chartFinance'));
+      chart.draw(data, {
+        legend: 'none', colors: ['#1B4B43'],
+        chartArea: { width: '90%', height: '75%' },
+        backgroundColor: 'transparent',
+        hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 9 } }
+      });
+    }, null, true);
+  }
+
+  let pieJenisAktif = 'Pribadi';
+
+function setPieJenis(jenis) {
+  pieJenisAktif = jenis;
+  document.querySelectorAll('#page-dashboard .chips')[0].querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.j === jenis));
+  drawOwnerPie();
+}
+
+function drawOwnerPie() {
+  callServer('getOwnerPieChartData', [pieJenisAktif], (owners) => {
+    const arr = [['Pemilik', 'Saldo USD']];
+    (owners || []).forEach(o => arr.push([o.nama, Number(o.saldoUSD)]));
+    if (arr.length === 1) arr.push(['Belum ada data', 1]);
+    const data = google.visualization.arrayToDataTable(arr);
+    const chart = new google.visualization.PieChart(document.getElementById('chartOwnerPie'));
+    chart.draw(data, {
+      legend: { position: 'right', textStyle: { fontSize: 10 } },
+      colors: ['#1B4B43', '#C9A227', '#2E7D5B', '#8FA69E', '#C0392B'],
+      chartArea: { width: '95%', height: '85%' },
+      backgroundColor: 'transparent', pieHole: 0.45
+    });
+  }, null, true);
+}
+</script>
+
+      <div class="page" id="page-employee">
+  <div class="field" style="margin-bottom:10px;">
+    <input type="text" id="empSearch" placeholder="🔍 Cari nama, jabatan, atau HP..." oninput="loadEmployees()">
+  </div>
+  <div id="employeeList"></div>
+  <button class="fab" onclick="openEmployeeForm()"><span class="material-symbols-outlined">person_add</span></button>
+</div>
+
+<script>
+  let editingEmpId = null;
+
+  function loadEmployees() {
+    const term = document.getElementById('empSearch').value;
+    callServer('getEmployees', [term], renderEmployeeList, null, true);
+  }
+
+  function renderEmployeeList(list) {
+    const container = document.getElementById('employeeList');
+    if (!list.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">group_off</span><div>Belum ada karyawan</div></div>';
+      return;
+    }
+    container.innerHTML = list.map(e => `
+      <div class="list-item">
+        <div class="avatar">${e.Nama.substring(0,2).toUpperCase()}</div>
+        <div class="main">
+          <div class="title">${e.Nama}</div>
+          <div class="sub">${e.Jabatan} · ${e.NomorHP}</div>
+        </div>
+        <span class="badge ${e.Status === 'Aktif' ? 'badge-green' : 'badge-mute'}">${e.Status}</span>
+        <button class="btn-icon" style="margin-left:6px;" onclick='openEmployeeForm(${JSON.stringify(e).replace(/'/g,"&apos;")})'>
+          <span class="material-symbols-outlined" style="font-size:16px;">edit</span>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  function openEmployeeForm(emp) {
+    editingEmpId = emp ? emp.ID : null;
+    Swal.fire({
+      title: emp ? 'Edit Karyawan' : 'Tambah Karyawan',
+      html: `
+        <input id="swNama" class="swal2-input" placeholder="Nama" value="${emp ? emp.Nama : ''}">
+        <input id="swHp" class="swal2-input" placeholder="Nomor HP" value="${emp ? emp.NomorHP : ''}">
+        <input id="swJabatan" class="swal2-input" placeholder="Jabatan" value="${emp ? emp.Jabatan : ''}">
+        <input id="swAlamat" class="swal2-input" placeholder="Alamat" value="${emp ? emp.Alamat : ''}">
+      `,
+      confirmButtonText: 'Simpan', confirmButtonColor: '#1B4B43', showCancelButton: true, cancelButtonText: 'Batal',
+      focusConfirm: false,
+      preConfirm: () => ({
+        nama: document.getElementById('swNama').value,
+        nomorHp: document.getElementById('swHp').value,
+        jabatan: document.getElementById('swJabatan').value,
+        alamat: document.getElementById('swAlamat').value
+      })
+    }).then(res => {
+      if (!res.isConfirmed) return;
+      if (!res.value.nama) { Swal.fire('Nama wajib diisi', '', 'warning'); return; }
+      if (editingEmpId) {
+        callServer('updateEmployee', [editingEmpId, res.value], () => { toastSukses('Karyawan diperbarui'); loadEmployees(); });
+      } else {
+        callServer('addEmployee', [res.value], () => { toastSukses('Karyawan ditambahkan'); loadEmployees(); });
+      }
+    });
+  }
+</script>
+
+      <div class="page" id="page-attendance">
+
+  <div class="card-flat grid-3" id="attStatsBox">
+    <div class="stat-mini"><div class="num" id="attHadir">0</div><div class="label">Hadir</div></div>
+    <div class="stat-mini"><div class="num" id="attIzinSakit">0</div><div class="label">Izin/Sakit</div></div>
+    <div class="stat-mini"><div class="num" id="attAlpha">0</div><div class="label">Alpha</div></div>
+  </div>
+
+  <div class="chips">
+    <div class="chip active" data-p="hari" onclick="setAttPeriode('hari')">Hari</div>
+    <div class="chip" data-p="minggu" onclick="setAttPeriode('minggu')">Minggu</div>
+    <div class="chip" data-p="bulan" onclick="setAttPeriode('bulan')">Bulan</div>
+    <div class="chip" data-p="tahun" onclick="setAttPeriode('tahun')">Tahun</div>
+  </div>
+
+  <div class="section-title">Absen Karyawan</div>
+  <div class="field">
+    <select id="attEmployeeSelect"></select>
+  </div>
+  <div class="grid-2" style="margin-bottom:10px;">
+    <button class="btn btn-primary" onclick="doAbsenMasuk()"><span class="material-symbols-outlined" style="font-size:16px;">login</span> Masuk</button>
+    <button class="btn btn-outline" onclick="doAbsenPulang()"><span class="material-symbols-outlined" style="font-size:16px;">logout</span> Pulang</button>
+  </div>
+  <div class="grid-3" style="margin-bottom:14px;">
+    <button class="btn btn-sm btn-outline" onclick="doStatus('Izin')">Izin</button>
+    <button class="btn btn-sm btn-outline" onclick="doStatus('Sakit')">Sakit</button>
+    <button class="btn btn-sm btn-outline" onclick="doStatus('Alpha')">Alpha</button>
+  </div>
+
+  <div class="section-title">Riwayat Absensi</div>
+  <div id="attendanceList"></div>
+</div>
+
+<script>
+  let attPeriode = 'hari';
+
+  function setAttPeriode(p) {
+    attPeriode = p;
+    document.querySelectorAll('#page-attendance .chip').forEach(c => c.classList.toggle('active', c.dataset.p === p));
+    loadAttendance();
+  }
+
+  function loadAttendance() {
+    callServer('getEmployees', [''], (emps) => {
+      const sel = document.getElementById('attEmployeeSelect');
+      sel.innerHTML = emps.filter(e => e.Status === 'Aktif').map(e => `<option value="${e.ID}" data-nama="${e.Nama}">${e.Nama}</option>`).join('');
+    }, null, true);
+
+    callServer('getAttendanceStats', [attPeriode], (stats) => {
+      document.getElementById('attHadir').textContent = stats.Hadir + stats.Terlambat;
+      document.getElementById('attIzinSakit').textContent = stats.Izin + stats.Sakit;
+      document.getElementById('attAlpha').textContent = stats.Alpha;
+    }, null, true);
+
+    callServer('getAttendance', [attPeriode], renderAttendanceList, null, true);
+  }
+
+  function renderAttendanceList(list) {
+    const container = document.getElementById('attendanceList');
+    if (!list.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">event_busy</span><div>Belum ada data absensi</div></div>';
+      return;
+    }
+    const badgeClass = { Hadir: 'badge-green', Terlambat: 'badge-gold', Izin: 'badge-mute', Sakit: 'badge-mute', Alpha: 'badge-red' };
+    container.innerHTML = list.slice().reverse().map(a => `
+      <div class="list-item">
+        <div class="avatar">${a.Nama.substring(0,2).toUpperCase()}</div>
+        <div class="main">
+          <div class="title">${a.Nama}</div>
+          <div class="sub">${a.Tanggal} ${a.JamMasuk ? '· ' + a.JamMasuk + (a.JamPulang ? '-' + a.JamPulang : '') : ''}</div>
+        </div>
+        <span class="badge ${badgeClass[a.Status] || 'badge-mute'}">${a.Status}</span>
+      </div>
+    `).join('');
+  }
+
+  function getSelectedEmployee() {
+    const sel = document.getElementById('attEmployeeSelect');
+    const opt = sel.options[sel.selectedIndex];
+    return opt ? { id: opt.value, nama: opt.dataset.nama } : null;
+  }
+
+  function doAbsenMasuk() {
+    const emp = getSelectedEmployee();
+    if (!emp) return;
+    callServer('absenMasuk', [emp.id, emp.nama], (res) => {
+      if (res.success) { toastSukses('Absen masuk: ' + res.status); loadAttendance(); }
+      else Swal.fire('Gagal', res.message, 'warning');
+    });
+  }
+
+  function doAbsenPulang() {
+    const emp = getSelectedEmployee();
+    if (!emp) return;
+    callServer('absenPulang', [emp.id], (res) => {
+      if (res.success) { toastSukses('Absen pulang tercatat'); loadAttendance(); }
+      else Swal.fire('Gagal', res.message, 'warning');
+    });
+  }
+
+  function doStatus(status) {
+    const emp = getSelectedEmployee();
+    if (!emp) return;
+    callServer('catatIzinSakitAlpha', [emp.id, emp.nama, status], (res) => {
+      if (res.success) { toastSukses('Status ' + status + ' tercatat'); loadAttendance(); }
+      else Swal.fire('Gagal', res.message, 'warning');
+    });
+  }
+</script>
+
+      <div class="page" id="page-finance">
+
+  <div class="card-flat grid-3">
+    <div class="stat-mini"><div class="num" id="finTrxCount">0</div><div class="label">Jml Transaksi</div></div>
+    <div class="stat-mini"><div class="num" id="finMasuk">$0</div><div class="label">Pemasukan</div></div>
+    <div class="stat-mini"><div class="num" id="finKeluar">$0</div><div class="label">Pengeluaran</div></div>
+  </div>
+
+  <div class="section-title">Input Transaksi</div>
+  <div class="card">
+    <div class="field">
+      <label>Pemilik Dana</label>
+      <select id="trxOwner"></select>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Mata Uang</label>
+        <select id="trxCurrency">
+          <option value="USD">USD</option>
+          <option value="KHR">KHR (Riel)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Nominal (+/-)</label>
+        <input type="number" id="trxNominal" class="nominal-input" placeholder="cth: 100 atau -50" oninput="markNominalColor()">
+      </div>
+    </div>
+    <div class="field">
+      <label>Kategori</label>
+      <input type="text" id="trxKategori" placeholder="cth: Operasional, Gaji, dll">
+    </div>
+    <div class="field">
+      <label>Keterangan</label>
+      <textarea id="trxKeterangan" rows="2" placeholder="Catatan transaksi"></textarea>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="submitTransaction()">Simpan Transaksi</button>
+    <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
+      Angka positif = tambah saldo · Angka negatif = kurangi saldo
+    </div>
+  </div>
+
+  <div class="section-title">Riwayat Transaksi</div>
+  <div class="chips">
+    <div class="chip active" data-p="hari" onclick="setFinPeriode('hari')">Hari</div>
+    <div class="chip" data-p="minggu" onclick="setFinPeriode('minggu')">Minggu</div>
+    <div class="chip" data-p="bulan" onclick="setFinPeriode('bulan')">Bulan</div>
+    <div class="chip" data-p="tahun" onclick="setFinPeriode('tahun')">Tahun</div>
+  </div>
+  <div class="field">
+    <input type="text" id="trxSearch" placeholder="🔍 Cari nomor transaksi..." oninput="loadTransactions()">
+  </div>
+  <div id="transactionList"></div>
+</div>
+
+<script>
+  let finPeriode = 'bulan';
+
+  function loadFinance() {
+    callServer('getFinanceSummary', [], (data) => {
+      document.getElementById('finTrxCount').textContent = data.jumlahTransaksi;
+      document.getElementById('finMasuk').textContent = '$' + data.totalPemasukan.toFixed(2);
+      document.getElementById('finKeluar').textContent = '$' + data.totalPengeluaran.toFixed(2);
+
+      const sel = document.getElementById('trxOwner');
+      sel.innerHTML = data.owners.filter(o => o.status === 'Aktif').map(o =>
+        `<option value="${o.id}">${o.icon} ${o.nama}</option>`).join('');
+    }, null, true);
+    loadTransactions();
+  }
+
+  function setFinPeriode(p) {
+    finPeriode = p;
+    document.querySelectorAll('#page-finance .chip').forEach(c => c.classList.toggle('active', c.dataset.p === p));
+    loadTransactions();
+  }
+
+  function markNominalColor() {
+    const el = document.getElementById('trxNominal');
+    el.classList.remove('pos', 'neg');
+    if (Number(el.value) > 0) el.classList.add('pos');
+    if (Number(el.value) < 0) el.classList.add('neg');
+  }
+
+  function submitTransaction() {
+    const ownerId = document.getElementById('trxOwner').value;
+    const currency = document.getElementById('trxCurrency').value;
+    const nominal = document.getElementById('trxNominal').value;
+    const kategori = document.getElementById('trxKategori').value;
+    const keterangan = document.getElementById('trxKeterangan').value;
+
+    if (!ownerId) { Swal.fire('Pemilik dana belum dipilih', '', 'warning'); return; }
+    if (!nominal || Number(nominal) === 0) { Swal.fire('Nominal wajib diisi (boleh negatif)', '', 'warning'); return; }
+
+    callServer('addTransaction', [ownerId, currency, nominal, kategori, keterangan, 'Kasir'], (res) => {
+      if (!res.success) { Swal.fire('Gagal', res.message, 'error'); return; }
+      toastDelta(res.naik, Math.abs(Number(nominal)).toLocaleString() + ' ' + currency);
+      document.getElementById('trxNominal').value = '';
+      document.getElementById('trxKategori').value = '';
+      document.getElementById('trxKeterangan').value = '';
+      if (res.merahGabungan || res.merahPribadi) {
+  alertSaldoMerahBaru(res.merahGabungan, res.kekuranganGabungan, res.merahPribadi, res.kekuranganPribadi);
+}
+      loadFinance();
+      checkGlobalWarnings();
+    });
+  }
+
+  function loadTransactions() {
+    const term = document.getElementById('trxSearch').value;
+    callServer('getTransactions', [{ periode: finPeriode, nomorTransaksi: term }], renderTransactionList, null, true);
+  }
+
+  function renderTransactionList(list) {
+    const container = document.getElementById('transactionList');
+    if (!list.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">receipt_long</span><div>Belum ada transaksi</div></div>';
+      return;
+    }
+    container.innerHTML = list.map(t => `
+      <div class="list-item">
+        <div class="avatar" style="background:${t.Nominal > 0 ? 'var(--gradient-primary)' : 'var(--danger)'};">
+          <span class="material-symbols-outlined" style="font-size:18px;">${t.Nominal > 0 ? 'arrow_upward' : 'arrow_downward'}</span>
+        </div>
+        <div class="main">
+          <div class="title">${t.PemilikDana} · ${t.Kategori}</div>
+          <div class="sub">${t.NomorTransaksi} · ${t.Tanggal} ${t.Jam}</div>
+        </div>
+        <span class="badge ${t.Nominal > 0 ? 'badge-green' : 'badge-red'}">${t.Nominal > 0 ? '+' : ''}${Number(t.Nominal).toLocaleString()} ${t.MataUang}</span>
+        <button class="btn-icon" style="margin-left:6px;color:var(--danger);" onclick="confirmDeleteTransaction('${t.NomorTransaksi}')">
+          <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  function confirmDeleteTransaction(nomorTransaksi) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Hapus Transaksi?',
+      html: `Transaksi <b>${nomorTransaksi}</b> akan dihapus.<br><small style="color:var(--text-mute);">Saldo pemilik dana terkait akan otomatis disesuaikan (dikembalikan seperti sebelum transaksi ini terjadi).</small>`,
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Hapus',
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#C0392B'
+    }).then(res => {
+      if (!res.isConfirmed) return;
+      callServer('deleteTransaction', [nomorTransaksi], (r) => {
+        if (r.success) {
+          toastSukses(r.message);
+          loadFinance();
+        } else {
+          Swal.fire('Gagal', r.message, 'error');
+        }
+      });
+    });
+  }
+</script>
+
+      <div class="page" id="page-laundry">
+
+  <div class="section-title">🧺 Laundry Bulan Ini</div>
+  <div class="card-flat grid-3" id="laundryStatCard">
+    <div class="stat-mini"><div class="num" id="ldrCount">0</div><div class="label">Dilakukan</div></div>
+    <div class="stat-mini"><div class="num" id="ldrTarget">0</div><div class="label">Target</div></div>
+    <div class="stat-mini"><div class="num" id="ldrSisa">0</div><div class="label">Sisa</div></div>
+  </div>
+  <div class="card-flat grid-2" style="margin-top:-4px;">
+    <div class="stat-mini"><div class="num" id="ldrBiaya">0</div><div class="label">Pengeluaran</div></div>
+    <div class="stat-mini"><div class="num" id="ldrSisaBudget">0</div><div class="label">Sisa Budget</div></div>
+  </div>
+  <div class="card" style="font-size:12px;color:var(--text-mute);">
+    Laundry terakhir: <b id="ldrTerakhir">-</b> · Jadwal berikutnya: <b id="ldrJadwal">-</b>
+  </div>
+
+  <div class="section-title">Catat Laundry</div>
+  <div class="card">
+    <div class="grid-2">
+      <div class="field"><label>Berat (kg)</label><input type="number" step="0.1" id="ldrBerat" placeholder="cth: 3.8"></div>
+      <div class="field"><label>Biaya (Riel)</label><input type="number" id="ldrBiayaInput" placeholder="15000"></div>
+    </div>
+    <div class="field"><label>Catatan (opsional)</label><input type="text" id="ldrCatatan" placeholder="cth: baju kerja"></div>
+    <button class="btn btn-primary btn-block" onclick="submitLaundry()">Simpan Laundry</button>
+  </div>
+
+  <div class="section-title">Pengaturan Laundry</div>
+  <div class="card">
+    <div class="grid-2">
+      <div class="field"><label>Harga per Laundry (Riel)</label><input type="number" id="ldrSetHarga" oninput="updateEstimasiPreview()"></div>
+      <div class="field"><label>Target Frekuensi (hari)</label><input type="number" id="ldrSetFrekuensi" oninput="updateEstimasiPreview()"></div>
+    </div>
+    <div class="grid-2">
+      <div class="field"><label>Kapasitas Paket (kg)</label><input type="number" id="ldrSetKapasitas"></div>
+      <div class="field"><label>Budget Bulanan (Riel)</label><input type="number" id="ldrSetBudget"></div>
+    </div>
+    <div class="field">
+      <label>Sumber Dana Laundry</label>
+      <select id="ldrSetOwner"></select>
+      <div style="font-size:11px;color:var(--text-mute);margin-top:4px;">Hanya dana Pribadi/Tabungan — Titipan tidak boleh dipakai.</div>
+    </div>
+    <div style="font-size:12px;color:var(--text-mute);margin-bottom:10px;" id="ldrEstimasiPreview">Estimasi: 6x/bulan</div>
+    <button class="btn btn-outline btn-block" onclick="saveLaundrySettingsUI()">Simpan Pengaturan Laundry</button>
+  </div>
+
+  <div class="section-title">Riwayat Laundry Bulan Ini</div>
+  <div id="laundryHistoryList"></div>
+</div>
+
+<script>
+  function loadLaundry() {
+    callServer('getLaundryStatus', [], renderLaundryStatus, null, true);
+    callServer('getLaundrySettings', [], renderLaundrySettingsForm, null, true);
+  }
+
+  function renderLaundryStatus(s) {
+    document.getElementById('ldrCount').textContent = s.jumlahLaundry;
+    document.getElementById('ldrTarget').textContent = s.estimasiPerBulan;
+    document.getElementById('ldrSisa').textContent = s.sisaLaundry;
+    document.getElementById('ldrBiaya').textContent = Math.round(s.totalBiaya).toLocaleString() + ' ៛';
+    document.getElementById('ldrSisaBudget').textContent = Math.round(s.sisaBudget).toLocaleString() + ' ៛';
+    document.getElementById('ldrTerakhir').textContent = s.laundryTerakhir || '-';
+    document.getElementById('ldrJadwal').textContent = s.jadwalBerikutnya || '-';
+
+    const card = document.getElementById('laundryStatCard');
+    card.classList.toggle('merah', s.status === 'bahaya');
+
+    renderLaundryHistory(s.riwayat || []);
+  }
+
+  function renderLaundryHistory(list) {
+    const container = document.getElementById('laundryHistoryList');
+    if (!list.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">local_laundry_service</span><div>Belum ada laundry bulan ini</div></div>';
+      return;
+    }
+    container.innerHTML = list.map(l => `
+      <div class="list-item">
+        <div class="avatar" style="background:var(--gradient-gold);">🧺</div>
+        <div class="main">
+          <div class="title">${l.BeratKg} kg ${l.Catatan ? '· ' + l.Catatan : ''}</div>
+          <div class="sub">${l.Tanggal}</div>
+        </div>
+        <span class="badge badge-mute">${Number(l.Biaya).toLocaleString()} ៛</span>
+      </div>
+    `).join('');
+  }
+
+  function renderLaundrySettingsForm(s) {
+    document.getElementById('ldrSetHarga').value = s.hargaLaundryRiel;
+    document.getElementById('ldrSetFrekuensi').value = s.targetFrekuensiHari;
+    document.getElementById('ldrSetKapasitas').value = s.kapasitasKg;
+    document.getElementById('ldrSetBudget').value = s.budgetLaundryRiel;
+
+    const sel = document.getElementById('ldrSetOwner');
+    sel.innerHTML = '<option value="">-- Pilih Sumber Dana --</option>' +
+      s.opsiOwner.map(o => `<option value="${o.id}" ${o.id === s.laundryOwnerId ? 'selected' : ''}>${o.nama} (${o.jenisDana})</option>`).join('');
+
+    updateEstimasiPreview();
+  }
+
+  function updateEstimasiPreview() {
+    const frekuensi = Number(document.getElementById('ldrSetFrekuensi').value) || 5;
+    const harga = Number(document.getElementById('ldrSetHarga').value) || 0;
+    const estimasi = Math.round(30 / frekuensi);
+    document.getElementById('ldrEstimasiPreview').textContent =
+      'Estimasi: ' + estimasi + 'x/bulan × ' + harga.toLocaleString() + ' ៛ = ' + (estimasi * harga).toLocaleString() + ' ៛/bulan';
+  }
+
+  function saveLaundrySettingsUI() {
+    const data = {
+      hargaLaundryRiel: document.getElementById('ldrSetHarga').value,
+      targetFrekuensiHari: document.getElementById('ldrSetFrekuensi').value,
+      kapasitasKg: document.getElementById('ldrSetKapasitas').value,
+      budgetLaundryRiel: document.getElementById('ldrSetBudget').value,
+      laundryOwnerId: document.getElementById('ldrSetOwner').value
+    };
+    if (!data.laundryOwnerId) { Swal.fire('Pilih sumber dana laundry dulu', '', 'warning'); return; }
+    callServer('saveLaundrySettings', [data], () => { toastSukses('Pengaturan laundry disimpan'); loadLaundry(); });
+  }
+
+  function submitLaundry() {
+    const berat = document.getElementById('ldrBerat').value;
+    const biaya = document.getElementById('ldrBiayaInput').value;
+    const catatan = document.getElementById('ldrCatatan').value;
+
+    callServer('addLaundryLog', [berat, biaya, catatan], (res) => {
+      if (!res.success) { Swal.fire('Gagal', res.message, 'warning'); return; }
+      toastSukses('Laundry tercatat');
+      document.getElementById('ldrBerat').value = '';
+      document.getElementById('ldrBiayaInput').value = '';
+      document.getElementById('ldrCatatan').value = '';
+
+      if (res.peringatanFrekuensi) alertLaundryFrekuensi(res.peringatanFrekuensi);
+      if (res.merahGabungan || res.merahPribadi) {
+        alertSaldoMerahBaru(res.merahGabungan, null, res.merahPribadi, null);
+      }
+      loadLaundry();
+      checkGlobalWarnings();
+      callServer('getLaundryStatus', [], (s) => { if (s.budgetTerlampaui) alertLaundryBudget(s.kelebihanBudget); }, null, true);
+    });
+  }
+</script>
+
+      <div class="page" id="page-owner">
+
+  <div id="ownerGroupedList"></div>
+
+  <button class="fab" onclick="openOwnerForm()"><span class="material-symbols-outlined">add</span></button>
+</div>
+
+<script>
+  function loadOwners() {
+    callServer('getOwners', [false], renderOwnerGrouped, null, true);
+  }
+
+  const JENIS_META = {
+    Pribadi:  { label: '💰 Uang Pribadi',  badge: 'badge-green' },
+    Titipan:  { label: '🤝 Uang Titipan',  badge: 'badge-gold'  },
+    Tabungan: { label: '🏦 Tabungan',      badge: 'badge-mute'  }
+  };
+
+  function renderOwnerGrouped(list) {
+    const container = document.getElementById('ownerGroupedList');
+
+    if (!list.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">account_balance_wallet</span><div>Belum ada pemilik dana</div></div>';
+      return;
+    }
+
+    const urutan = ['Pribadi', 'Titipan', 'Tabungan'];
+    let html = '';
+
+    urutan.forEach(jenis => {
+      const group = list.filter(o => o.JenisDana === jenis);
+      if (!group.length) return;
+
+      const meta = JENIS_META[jenis] || { label: jenis, badge: 'badge-mute' };
+      const subtotal = group.reduce((s, o) => s + Number(o.SaldoUSD || 0), 0);
+
+      html += `
+        <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>${meta.label}</span>
+          <span class="badge ${meta.badge}" style="font-size:11px;">$${subtotal.toFixed(2)}</span>
+        </div>
+      `;
+
+      html += group.map(o => renderOwnerRow_(o)).join('');
+    });
+
+    // Jaga-jaga kalau ada JenisDana di luar 3 kategori standar (data lama/tidak konsisten)
+    const lainnya = list.filter(o => !urutan.includes(o.JenisDana));
+    if (lainnya.length) {
+      html += `<div class="section-title">⚠ Belum Terkategori</div>`;
+      html += lainnya.map(o => renderOwnerRow_(o)).join('');
+    }
+
+    container.innerHTML = html;
+  }
+
+  function renderOwnerRow_(o) {
+    return `
+      <div class="list-item">
+        <div class="avatar" style="background:${o.Warna};">${o.Icon}</div>
+        <div class="main">
+          <div class="title">${o.Nama}</div>
+          <div class="sub">$${Number(o.SaldoUSD).toFixed(2)} · ${formatKHRDisplay_(o.SaldoKHR)}</div>
+        </div>
+        <span class="badge ${o.Status === 'Aktif' ? 'badge-green' : 'badge-mute'}" style="cursor:pointer;"
+          onclick="toggleOwnerStatus('${o.ID}','${o.Status}')">${o.Status}</span>
+        <button class="btn-icon" style="margin-left:6px;" onclick='openOwnerForm(${JSON.stringify(o).replace(/'/g,"&apos;")})'>
+          <span class="material-symbols-outlined" style="font-size:16px;">edit</span>
+        </button>
+        <button class="btn-icon" style="margin-left:6px;color:var(--danger);" onclick="confirmDeleteOwner('${o.ID}','${o.Nama.replace(/'/g,"&apos;")}')">
+          <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
+        </button>
+      </div>
+    `;
+  }
+
+  function formatKHRDisplay_(khr) {
+    return '៛' + Math.round(Number(khr || 0)).toLocaleString('en-US');
+  }
+
+  function toggleOwnerStatus(id, current) {
+    const next = current === 'Aktif' ? 'Nonaktif' : 'Aktif';
+    callServer('setOwnerStatus', [id, next], () => { toastSukses('Status diperbarui'); loadOwners(); });
+  }
+
+  function confirmDeleteOwner(id, nama) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Hapus Pemilik Dana?',
+      html: `Yakin mau hapus <b>${nama}</b>?<br><small style="color:var(--text-mute);">Riwayat transaksi milik pemilik ini tidak akan ikut terhapus, tapi datanya tetap tercatat di sheet Transaksi.</small>`,
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Hapus',
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#C0392B'
+    }).then(res => {
+      if (!res.isConfirmed) return;
+      callServer('deleteOwner', [id], (r) => {
+        if (r.success) { toastSukses('Pemilik dana dihapus'); loadOwners(); }
+        else Swal.fire('Gagal', r.message, 'error');
+      });
+    });
+  }
+
+  let editingOwnerId = null;
+  function openOwnerForm(owner) {
+    editingOwnerId = owner ? owner.ID : null;
+    Swal.fire({
+      title: owner ? 'Edit Pemilik Dana' : 'Tambah Pemilik Dana',
+      html: `
+        <input id="swNama" class="swal2-input" placeholder="Nama Pemilik" value="${owner ? owner.Nama : ''}">
+        <input id="swIcon" class="swal2-input" placeholder="Icon (emoji)" value="${owner ? owner.Icon : '💼'}">
+        <input id="swWarna" class="swal2-input" type="color" value="${owner ? owner.Warna : '#1B4B43'}">
+        <select id="swJenisDana" class="swal2-input">
+          <option value="Pribadi" ${!owner || owner.JenisDana === 'Pribadi' ? 'selected' : ''}>💰 Uang Pribadi</option>
+          <option value="Titipan" ${owner && owner.JenisDana === 'Titipan' ? 'selected' : ''}>🤝 Uang Titipan</option>
+          <option value="Tabungan" ${owner && owner.JenisDana === 'Tabungan' ? 'selected' : ''}>🏦 Tabungan</option>
+        </select>
+        ${owner ? '' : `
+          <input id="swModal" class="swal2-input" type="number" placeholder="Modal Awal / Saldo Titipan">
+          <select id="swMataUang" class="swal2-input">
+            <option value="USD">USD</option>
+            <option value="KHR">KHR (Riel)</option>
+          </select>
+        `}
+      `,
+      confirmButtonText: 'Simpan', confirmButtonColor: '#1B4B43', showCancelButton: true, cancelButtonText: 'Batal',
+      focusConfirm: false,
+      preConfirm: () => ({
+        nama: document.getElementById('swNama').value,
+        icon: document.getElementById('swIcon').value,
+        warna: document.getElementById('swWarna').value,
+        jenisDana: document.getElementById('swJenisDana').value,
+        modalAwal: owner ? undefined : document.getElementById('swModal').value,
+        mataUangModal: owner ? undefined : document.getElementById('swMataUang').value
+      })
+    }).then(res => {
+      if (!res.isConfirmed) return;
+      if (!res.value.nama) { Swal.fire('Nama wajib diisi', '', 'warning'); return; }
+      if (editingOwnerId) {
+        callServer('updateOwner', [editingOwnerId, res.value], () => { toastSukses('Pemilik dana diperbarui'); loadOwners(); });
+      } else {
+        callServer('addOwner', [res.value], () => { toastSukses('Pemilik dana ditambahkan'); loadOwners(); });
+      }
+    });
+  }
+</script>
+
+      <div class="page" id="page-report">
+
+  <div class="chips">
+    <div class="chip active" data-t="absensi" onclick="setReportType('absensi')">📋 Absensi</div>
+    <div class="chip" data-t="keuangan" onclick="setReportType('keuangan')">💰 Keuangan</div>
+  </div>
+
+  <div class="chips">
+    <div class="chip active" data-p="bulan" onclick="setReportPeriode('bulan')">Bulan</div>
+    <div class="chip" data-p="hari" onclick="setReportPeriode('hari')">Hari</div>
+    <div class="chip" data-p="minggu" onclick="setReportPeriode('minggu')">Minggu</div>
+    <div class="chip" data-p="tahun" onclick="setReportPeriode('tahun')">Tahun</div>
+  </div>
+
+  <div class="card" id="reportSummaryCard"></div>
+
+  <div class="grid-2" style="margin-bottom:12px;">
+    <button class="btn btn-gold" onclick="doExport('pdf')"><span class="material-symbols-outlined" style="font-size:16px;">picture_as_pdf</span> PDF</button>
+    <button class="btn btn-outline" onclick="doExport('excel')"><span class="material-symbols-outlined" style="font-size:16px;">grid_on</span> Excel</button>
+  </div>
+
+  <div id="reportList"></div>
+</div>
+
+<script>
+  let reportType = 'absensi';
+  let reportPeriode = 'bulan';
+
+  function initReportPage() { loadReport(); }
+
+  function setReportType(t) {
+    reportType = t;
+    document.querySelectorAll('#page-report .chips')[0].querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.t === t));
+    loadReport();
+  }
+  function setReportPeriode(p) {
+    reportPeriode = p;
+    document.querySelectorAll('#page-report .chips')[1].querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.p === p));
+    loadReport();
+  }
+
+  function loadReport() {
+    if (reportType === 'absensi') {
+      callServer('getAttendanceReport', [reportPeriode], (r) => {
+        document.getElementById('reportSummaryCard').innerHTML = `
+          <div class="grid-3">
+            <div class="stat-mini"><div class="num">${r.summary.Hadir}</div><div class="label">Hadir</div></div>
+            <div class="stat-mini"><div class="num">${r.summary.Terlambat}</div><div class="label">Terlambat</div></div>
+            <div class="stat-mini"><div class="num">${r.summary.Izin + r.summary.Sakit}</div><div class="label">Izin/Sakit</div></div>
+          </div>`;
+        renderReportList(r.data.map(d => ({ title: d.Nama, sub: d.Tanggal + ' · ' + d.Status, right: d.LamaKerja || '' })));
+      }, null, true);
+    } else {
+      callServer('getFinanceReport', [reportPeriode], (r) => {
+        document.getElementById('reportSummaryCard').innerHTML = `
+          <div class="grid-3">
+            <div class="stat-mini"><div class="num">${r.totalTransaksi}</div><div class="label">Transaksi</div></div>
+            <div class="stat-mini"><div class="num">$${r.totalPemasukan.toFixed(0)}</div><div class="label">Pemasukan</div></div>
+            <div class="stat-mini"><div class="num">$${r.totalPengeluaran.toFixed(0)}</div><div class="label">Pengeluaran</div></div>
+          </div>`;
+        renderReportList(r.data.map(d => ({ title: d.PemilikDana + ' · ' + d.Kategori, sub: d.NomorTransaksi, right: (d.Nominal > 0 ? '+' : '') + d.Nominal + ' ' + d.MataUang })));
+      }, null, true);
+    }
+  }
+
+  function renderReportList(items) {
+    const container = document.getElementById('reportList');
+    if (!items.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">description</span><div>Tidak ada data pada periode ini</div></div>';
+      return;
+    }
+    container.innerHTML = items.map(i => `
+      <div class="list-item">
+        <div class="main"><div class="title">${i.title}</div><div class="sub">${i.sub}</div></div>
+        <span class="badge badge-mute">${i.right}</span>
+      </div>
+    `).join('');
+  }
+
+  function doExport(format) {
+    const fn = format === 'pdf' ? 'exportReportToPDF' : 'exportReportToExcel';
+    callServer(fn, [reportType, reportPeriode], (res) => {
+      if (res.success) {
+        Swal.fire({
+          icon: 'success', title: 'Ekspor Berhasil',
+          html: `<a href="${res.url}" target="_blank">Buka file hasil ekspor</a>`,
+          confirmButtonColor: '#1B4B43'
+        });
+      }
+    });
+  }
+</script>
+
+      <div class="page" id="page-setting">
+
+  <div class="section-title">Profil Perusahaan</div>
+  <div class="card">
+    <div class="field"><label>Nama Perusahaan</label><input type="text" id="setNamaPerusahaan"></div>
+    <div class="field"><label>URL Logo (opsional)</label><input type="text" id="setLogo" placeholder="https://..."></div>
+  </div>
+
+  <div class="section-title">Tampilan</div>
+  <div class="card">
+    <div class="grid-2">
+      <button class="btn btn-outline" id="btnLight" onclick="setTheme('light')">☀ Light Mode</button>
+      <button class="btn btn-outline" id="btnDark" onclick="setTheme('dark')">🌙 Dark Mode</button>
+    </div>
+  </div>
+
+  <div class="section-title">Kurs ABA Bank Cambodia</div>
+  <div class="card">
+    <div class="field"><label>1 USD = ? KHR</label><input type="number" id="setKurs" placeholder="4100"></div>
+    <button class="btn btn-primary btn-block" onclick="saveKurs()">Perbarui Kurs</button>
+  </div>
+
+  <div class="section-title">Anggaran Harian</div>
+  <div class="card">
+    <div class="grid-2">
+      <div class="field"><label>Anggaran Bulanan ($)</label><input type="number" id="setBudgetBulanan" placeholder="400" oninput="updateLimitPreview()"></div>
+      <div class="field"><label>Target Tabungan ($)</label><input type="number" id="setTargetTabungan" placeholder="100" oninput="updateLimitPreview()"></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-mute);margin-bottom:10px;" id="limitHarianPreview">Limit harian: $0.00</div>
+    <button class="btn btn-primary btn-block" onclick="saveBudgetSettings()">Simpan Anggaran</button>
+  </div>
+
+  <div class="section-title">Notifikasi Peringatan</div>
+<div class="card">
+  <div class="field">
+    <label>Notifikasi (Banner + Suara)</label>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="btnNotifOn" onclick="setNotifAktif(true)">🔔 Aktif</button>
+      <button class="btn btn-outline" id="btnNotifOff" onclick="setNotifAktif(false)">🔕 Nonaktif</button>
+    </div>
+  </div>
+  <div class="field" style="margin-bottom:0;">
+    <label>Suara Peringatan</label>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="btnSuaraOn" onclick="setSuaraAktif(true)">🔊 Aktif</button>
+      <button class="btn btn-outline" id="btnSuaraOff" onclick="setSuaraAktif(false)">🔇 Nonaktif</button>
+    </div>
+  </div>
+</div>
+
+  <div class="section-title">Zona Waktu</div>
+  <div class="card">
+    <div class="field">
+      <select id="setTimezone">
+        <option value="Asia/Phnom_Penh">Asia/Phnom_Penh</option>
+        <option value="Asia/Jakarta">Asia/Jakarta</option>
+        <option value="Asia/Bangkok">Asia/Bangkok</option>
+        <option value="Asia/Singapore">Asia/Singapore</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn btn-primary btn-block" style="margin-bottom:14px;" onclick="saveGeneralSettings()">Simpan Pengaturan</button>
+
+  <div class="section-title">Backup Data</div>
+  <div class="card">
+    <button class="btn btn-gold btn-block" onclick="doBackup()"><span class="material-symbols-outlined" style="font-size:16px;">cloud_upload</span> Backup Sekarang</button>
+    <div id="backupList" style="margin-top:10px;"></div>
+  </div>
+</div>
+
+<script>
+
+function setNotifAktif(aktif) {
+  callServer('saveAppSettings', [{ NotifikasiAktif: aktif ? 'true' : 'false' }], () => {
+    toastSukses('Notifikasi ' + (aktif ? 'diaktifkan' : 'dimatikan'));
+    highlightNotifToggle('Notif', aktif);
+    checkGlobalWarnings();
+  }, null, true);
+}
+
+function setSuaraAktif(aktif) {
+  callServer('saveAppSettings', [{ SuaraNotifikasiAktif: aktif ? 'true' : 'false' }], () => {
+    toastSukses('Suara peringatan ' + (aktif ? 'diaktifkan' : 'dimatikan'));
+    highlightNotifToggle('Suara', aktif);
+    checkGlobalWarnings();
+  }, null, true);
+}
+
+function highlightNotifToggle(prefix, aktif) {
+  document.getElementById('btn' + prefix + 'On').classList.toggle('btn-primary', aktif);
+  document.getElementById('btn' + prefix + 'Off').classList.toggle('btn-primary', !aktif);
+}
+  
+ function loadSettings() {
+  callServer('getAppSettings', [], (s) => {
+    document.getElementById('setNamaPerusahaan').value = s.NamaPerusahaan || '';
+    document.getElementById('setLogo').value = s.Logo || '';
+    document.getElementById('setKurs').value = s.KursABA || 4100;
+    document.getElementById('setBudgetBulanan').value = s.BudgetBulanan || 400;
+    document.getElementById('setTargetTabungan').value = s.TargetTabungan || 100;
+    document.getElementById('setTimezone').value = s.Timezone || 'Asia/Phnom_Penh';
+    highlightTheme(s.Tema || 'light');
+    updateLimitPreview();
+    highlightNotifToggle('Notif', s.NotifikasiAktif !== 'false');   // 👈 baru
+    highlightNotifToggle('Suara', s.SuaraNotifikasiAktif !== 'false'); // 👈 baru
+  }, null, true);
+  callServer('listBackups', [], renderBackupList, null, true);
+}
+
+  function highlightTheme(t) {
+    document.getElementById('btnLight').classList.toggle('btn-primary', t === 'light');
+    document.getElementById('btnDark').classList.toggle('btn-primary', t === 'dark');
+  }
+
+  function setTheme(t) {
+    document.body.setAttribute('data-theme', t);
+    highlightTheme(t);
+    callServer('saveAppSettings', [{ Tema: t }], () => toastSukses('Tema diperbarui'), null, true);
+  }
+
+  function saveGeneralSettings() {
+    const data = {
+      NamaPerusahaan: document.getElementById('setNamaPerusahaan').value,
+      Logo: document.getElementById('setLogo').value,
+      Timezone: document.getElementById('setTimezone').value
+    };
+    callServer('saveAppSettings', [data], () => {
+      toastSukses('Pengaturan disimpan');
+      document.getElementById('companyName').textContent = data.NamaPerusahaan;
+    });
+  }
+
+  function saveKurs() {
+    const kurs = document.getElementById('setKurs').value;
+    callServer('updateKursABA', [kurs], () => toastSukses('Kurs ABA diperbarui: 1 USD = ' + kurs + ' KHR'));
+  }
+
+  function doBackup() {
+    callServer('backupSpreadsheet', [], (res) => {
+      Swal.fire({ icon: 'success', title: 'Backup Berhasil', html: `<a href="${res.url}" target="_blank">${res.name}</a>`, confirmButtonColor: '#1B4B43' });
+      loadSettings();
+    });
+  }
+
+  function renderBackupList(list) {
+    const container = document.getElementById('backupList');
+    if (!list.length) { container.innerHTML = ''; return; }
+    container.innerHTML = list.slice(0, 5).map(b => `
+      <div class="list-item">
+        <div class="main"><div class="title">${b.name}</div></div>
+        <a class="btn btn-sm btn-outline" href="${b.url}" target="_top">Buka</a>
+      </div>
+    `).join('');
+  }
+
+  function updateLimitPreview() {
+    const budget = Number(document.getElementById('setBudgetBulanan').value) || 0;
+    const tabungan = Number(document.getElementById('setTargetTabungan').value) || 0;
+    const limit = ((budget - tabungan) / 30).toFixed(2);
+    document.getElementById('limitHarianPreview').textContent = 'Limit harian: $' + limit + '/hari';
+  }
+
+  function saveBudgetSettings() {
+    const data = {
+      BudgetBulanan: document.getElementById('setBudgetBulanan').value,
+      TargetTabungan: document.getElementById('setTargetTabungan').value
+    };
+    callServer('saveAppSettings', [data], () => {
+      toastSukses('Anggaran diperbarui');
+      updateLimitPreview();
+    });
+  }
+</script>
+
+    </div>
+
+    <div class="bottomnav">
+      <div class="navitem active" id="nav-dashboard" onclick="goPage('dashboard')">
+        <span class="material-symbols-outlined">home</span>Dashboard
+      </div>
+      <div class="navitem" id="nav-employee" onclick="goPage('employee')">
+        <span class="material-symbols-outlined">group</span>Karyawan
+      </div>
+      <div class="navitem" id="nav-attendance" onclick="goPage('attendance')">
+        <span class="material-symbols-outlined">check_circle</span>Absensi
+      </div>
+      <div class="navitem" id="nav-finance" onclick="goPage('finance')">
+        <span class="material-symbols-outlined">payments</span>Keuangan
+      </div>
+      <div class="navitem" id="nav-laundry" onclick="goPage('laundry')">
+  <span class="material-symbols-outlined">local_laundry_service</span>Laundry
+</div>
+      <div class="navitem" id="nav-owner" onclick="goPage('owner')">
+        <span class="material-symbols-outlined">account_balance_wallet</span>Pemilik
+      </div>
+      <div class="navitem" id="nav-report" onclick="goPage('report')">
+        <span class="material-symbols-outlined">bar_chart</span>Laporan
+      </div>
+      <div class="navitem" id="nav-setting" onclick="goPage('setting')">
+        <span class="material-symbols-outlined">settings</span>Atur
+      </div>
+    </div>
+
+    <div class="loader-overlay" id="loaderOverlay"><div class="loader-ring"></div></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://www.gstatic.com/charts/loader.js"></script>
+<script>
+  google.charts.load('current', { packages: ['corechart'] });
+
+  // ===================================================================
+  // KONFIGURASI API — GANTI URL INI dengan URL Web App Apps Script kamu.
+  // Cara dapat: di Apps Script -> Deploy -> New deployment -> Web app ->
+  // Execute as: Me, Who has access: Anyone -> Deploy -> copy URL-nya.
+  // URL selalu diakhiri "/exec".
+  // ===================================================================
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwA7my5ezL6FqaIiuylM4oE-iCVDFvPCbDq1_RFmz_wgtp_DwYbKBEkbtJykSrKsrAL/exec';
+
+  // Peta nama parameter positional -> nama key yang diharapkan backend (API.gs)
+  const ACTION_PARAMS = {
+    getDashboardData: [],
+    getAttendanceChartData: [],
+    getFinanceChartData: [],
+    getOwnerPieChartData: ['jenisDana'],
+    getEmployees: ['term'],
+    addEmployee: ['data'],
+    updateEmployee: ['id', 'data'],
+    deleteEmployee: ['id'],
+    setEmployeeStatus: ['id', 'status'],
+    getAttendance: ['periode', 'customStart', 'customEnd'],
+    getAttendanceStats: ['periode', 'customStart', 'customEnd'],
+    absenMasuk: ['idKaryawan', 'namaKaryawan'],
+    absenPulang: ['idKaryawan'],
+    catatIzinSakitAlpha: ['idKaryawan', 'namaKaryawan', 'jenisStatus'],
+    getOwners: ['onlyActive'],
+    addOwner: ['data'],
+    updateOwner: ['id', 'data'],
+    deleteOwner: ['id'],
+    setOwnerStatus: ['id', 'status'],
+    getFinanceSummary: [],
+    addTransaction: ['ownerId', 'currency', 'nominal', 'kategori', 'keterangan', 'operator'],
+    deleteTransaction: ['nomorTransaksi'],
+    getTransactions: ['filter'],
+    getBudgetStatus: [],
+    getSavingsProjection: [],
+    getGlobalWarningStatus: [],
+    getLaundryStatus: [],
+    getLaundrySettings: [],
+    saveLaundrySettings: ['data'],
+    addLaundryLog: ['beratKg', 'biayaRiel', 'catatan'],
+    getAttendanceReport: ['periode', 'customStart', 'customEnd'],
+    getFinanceReport: ['periode', 'customStart', 'customEnd'],
+    exportReportToPDF: ['jenisLaporan', 'periode', 'customStart', 'customEnd'],
+    exportReportToExcel: ['jenisLaporan', 'periode', 'customStart', 'customEnd'],
+    getAppSettings: [],
+    saveAppSettings: ['data'],
+    updateKursABA: ['kurs'],
+    backupSpreadsheet: [],
+    listBackups: []
+  };
+
+  // Aksi yang MENGUBAH data (dikirim via POST supaya aman untuk payload lebih besar)
+  const WRITE_ACTIONS = new Set([
+    'addEmployee', 'updateEmployee', 'deleteEmployee', 'setEmployeeStatus',
+    'absenMasuk', 'absenPulang', 'catatIzinSakitAlpha',
+    'addOwner', 'updateOwner', 'deleteOwner', 'setOwnerStatus',
+    'addTransaction', 'deleteTransaction',
+    'saveLaundrySettings', 'addLaundryLog',
+    'saveAppSettings', 'updateKursABA', 'backupSpreadsheet',
+    'exportReportToPDF', 'exportReportToExcel'
+  ]);
+
+  // ---------------- SUARA PERINGATAN ----------------
+let audioCtx = null;
+
+function playAlertSound(jenis) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // 'bahaya' = 2 beep nada rendah (mendesak), 'perhatian' = 1 beep nada tinggi (ringan)
+    const nada = jenis === 'bahaya' ? [880, 660] : [660];
+
+    nada.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.25);
+      osc.connect(gain).connect(audioCtx.destination);
+      const start = audioCtx.currentTime + i * 0.3;
+      osc.start(start);
+      osc.stop(start + 0.25);
+    });
+  } catch (e) {
+    // Browser tidak dukung Web Audio API — abaikan, alert visual tetap jalan.
+  }
+}
+// ---------------- GLOBAL WARNING WATCHER (muncul di semua halaman) ----------------
+let globalWarningSoundInterval = null;
+let globalWarningSoundMuted = false;
+let globalWarningItems = [];
+
+function startGlobalWarningWatcher() {
+  checkGlobalWarnings();
+  setInterval(checkGlobalWarnings, 45000); // 👈 dari 30000 jadi 45000 (45 detik)
+}
+
+function checkGlobalWarnings() {
+  callServer('getGlobalWarningStatus', [], renderGlobalWarningBanner, null, true);
+}
+
+function renderGlobalWarningBanner(status) {
+  globalWarningItems = status.items || [];
+  const banner = document.getElementById('globalWarningBanner');
+  const textEl = document.getElementById('globalWarningText');
+  const iconEl = document.getElementById('globalWarningIcon');
+
+  if (!status.notifAktif || !status.ada) {
+    banner.classList.add('hidden');
+    stopGlobalWarningSound();
+    if (!status.ada) globalWarningSoundMuted = false; // reset mute begitu sudah aman lagi
+    return;
+  }
+
+  banner.classList.remove('hidden');
+  banner.classList.toggle('perhatian', status.tingkat === 'perhatian');
+  iconEl.textContent = status.tingkat === 'bahaya' ? 'error' : 'warning';
+  textEl.textContent = status.items.length + ' peringatan aktif — ketuk untuk detail';
+
+  if (status.suaraAktif && !globalWarningSoundMuted) startGlobalWarningSound(status.tingkat);
+  else stopGlobalWarningSound();
+}
+
+function startGlobalWarningSound(tingkat) {
+  if (globalWarningSoundInterval) return;
+  playAlertSound(tingkat);
+  globalWarningSoundInterval = setInterval(() => playAlertSound(tingkat), 40000); // 👈 dari 20000 jadi 40000 (40 detik)
+}
+
+function stopGlobalWarningSound() {
+  if (globalWarningSoundInterval) { clearInterval(globalWarningSoundInterval); globalWarningSoundInterval = null; }
+}
+
+function muteGlobalWarningSound() {
+  globalWarningSoundMuted = true;
+  stopGlobalWarningSound();
+  toastSukses('Suara peringatan dibisukan sampai kondisi kembali aman');
+}
+
+function showGlobalWarningDetail() {
+  if (!globalWarningItems.length) return;
+  const html = globalWarningItems.map(i =>
+    `<div style="text-align:left;margin-bottom:8px;"><b>${i.level === 'bahaya' ? '🔴' : '🟡'} ${i.title}</b><br><span style="font-size:12px;color:var(--text-mute);">${i.detail}</span></div>`
+  ).join('');
+  Swal.fire({
+    icon: 'warning', title: 'Peringatan Aktif', html,
+    confirmButtonColor: '#1B4B43', confirmButtonText: 'Mengerti'
+  });
+}
+
+  // ---------------- NAVIGASI SPA ----------------
+  function goPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.navitem').forEach(n => n.classList.remove('active'));
+    const page = document.getElementById('page-' + name);
+    const nav = document.getElementById('nav-' + name);
+    if (page) page.classList.add('active');
+    if (nav) nav.classList.add('active');
+    if (typeof onPageShown === 'function') onPageShown(name);
+  }
+
+  // ---------------- LOADING OVERLAY ----------------
+  function showLoading() { document.getElementById('loaderOverlay').classList.add('show'); }
+  function hideLoading() { document.getElementById('loaderOverlay').classList.remove('show'); }
+
+  // ---------------- WRAPPER FETCH KE APPS SCRIPT WEB APP ----------------
+  // Menggantikan google.script.run: sekarang manggil endpoint API.gs (doGet/doPost)
+  // via fetch biasa, supaya aplikasi bisa jalan mandiri di GitHub Pages.
+  function callServer(fnName, args, onSuccess, onError, silent) {
+    args = args || [];
+    if (!silent) showLoading();
+
+    if (!API_URL || API_URL.indexOf('PASTE_URL_WEB_APP') !== -1) {
+      if (!silent) hideLoading();
+      Swal.fire({ icon: 'error', title: 'API_URL belum diatur', text: 'Buka file Script.html, isi konstanta API_URL dengan URL Web App Apps Script kamu (diakhiri /exec).', confirmButtonColor: '#1B4B43' });
+      if (onError) onError(new Error('API_URL belum diatur'));
+      return;
+    }
+
+    const paramNames = ACTION_PARAMS[fnName] || [];
+    const params = {};
+    paramNames.forEach((name, i) => { if (args[i] !== undefined) params[name] = args[i]; });
+
+    const isWrite = WRITE_ACTIONS.has(fnName);
+    const request = isWrite
+      ? fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight
+          body: JSON.stringify({ action: fnName, params: params })
+        })
+      : fetch(API_URL + '?action=' + encodeURIComponent(fnName) + '&params=' + encodeURIComponent(JSON.stringify(params)));
+
+    request
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(res => {
+        if (!silent) hideLoading();
+        if (onSuccess) onSuccess(res);
+      })
+      .catch(err => {
+        if (!silent) hideLoading();
+        Swal.fire({ icon: 'error', title: 'Terjadi Kesalahan', text: err.message || String(err), confirmButtonColor: '#1B4B43' });
+        if (onError) onError(err);
+      });
+  }
+
+  // ---------------- JAM REALTIME ----------------
+  function startClock() {
+    function tick() {
+      const now = new Date();
+      const jam = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const el = document.getElementById('clockDisplay');
+      if (el) el.textContent = jam;
+    }
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  // ---------------- COUNTER ANIMATION ----------------
+  function animateCounter(el, target, prefix, decimals) {
+    if (!el) return;
+    const start = Number(el.dataset.val || 0);
+    const duration = 700;
+    const startTime = performance.now();
+    decimals = decimals === undefined ? 2 : decimals;
+    function frame(t) {
+      const progress = Math.min((t - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const val = start + (target - start) * eased;
+      el.textContent = (prefix || '') + val.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      if (progress < 1) requestAnimationFrame(frame);
+      else el.dataset.val = target;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------------- PROGRESS RING ----------------
+  function setRing(circleEl, percent) {
+    const r = circleEl.r.baseVal.value;
+    const circumference = 2 * Math.PI * r;
+    circleEl.style.strokeDasharray = circumference;
+    const clamped = Math.max(0, Math.min(100, percent));
+    circleEl.style.strokeDashoffset = circumference - (clamped / 100) * circumference;
+  }
+
+  // ---------------- TOAST DELTA SALDO ----------------
+  function toastDelta(naik, nominalText) {
+    Swal.fire({
+      toast: true, position: 'top', timer: 2200, showConfirmButton: false,
+      icon: naik ? 'success' : 'error',
+      title: (naik ? '▲ +' : '▼ ') + nominalText
+    });
+  }
+
+  function alertSaldoMerahBaru(merahGabungan, kekuranganGabungan, merahPribadi, kekuranganPribadi) {
+   playAlertSound('bahaya');
+  let html = '';
+  if (merahGabungan) {
+    html += 'Tabungan tidak cukup menutupi Dana Pribadi + Titipan.<br>Kekurangan (gabungan): <b>$' + Number(kekuranganGabungan).toFixed(2) + '</b><br><br>';
+  }
+  if (merahPribadi) {
+    html += 'Tabungan tidak cukup menutupi Dana Pribadi saja.<br>Kekurangan (pribadi): <b>$' + Number(kekuranganPribadi).toFixed(2) + '</b>';
+  }
+  Swal.fire({
+    icon: 'warning',
+    title: '⚠ Saldo Merah',
+    html,
+    confirmButtonColor: '#C0392B',
+    confirmButtonText: 'Mengerti'
+  });
+}
+
+  function alertBudgetMerah(kelebihan) {
+    playAlertSound('bahaya');
+  Swal.fire({
+    icon: 'warning',
+    title: '⚠ Limit Harian Terlampaui',
+    html: 'Pengeluaran hari ini sudah melebihi limit harian.<br>Kelebihan: <b>$' + Number(kelebihan).toFixed(2) + '</b>',
+    confirmButtonColor: '#C0392B',
+    confirmButtonText: 'Mengerti'
+  });
+}
+
+function alertLaundryFrekuensi(pesan) {
+  playAlertSound('perhatian');
+  Swal.fire({ icon: 'info', title: '🟡 Laundry Lebih Cepat', text: pesan, confirmButtonColor: '#C9A227' });
+}
+
+function alertLaundryBudget(kelebihan) {
+  playAlertSound('bahaya');
+  Swal.fire({
+    icon: 'warning', title: '🔴 Budget Laundry Terlampaui',
+    html: 'Pengeluaran laundry bulan ini sudah melebihi budget sebesar <b>' + Math.round(kelebihan).toLocaleString() + ' Riel</b>.',
+    confirmButtonColor: '#C0392B'
+  });
+}
+
+  function toastSukses(pesan) {
+    Swal.fire({ toast: true, position: 'top', timer: 1800, showConfirmButton: false, icon: 'success', title: pesan });
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    startClock();
+    goPage('dashboard');
+    startGlobalWarningWatcher(); 
+  });
+</script>
+
+  <script>
+    // Router hook: setiap kali halaman ditampilkan, muat data terkait.
+   function onPageShown(name) {
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'employee') loadEmployees();
+  if (name === 'attendance') loadAttendance();
+  if (name === 'finance') loadFinance();
+  if (name === 'owner') loadOwners();
+  if (name === 'laundry') loadLaundry();   // 👈 baru
+  if (name === 'report') initReportPage();
+  if (name === 'setting') loadSettings();
+}
+
+    // Info hari/tanggal & nama perusahaan diambil sekali di awal.
+    callServer('getDashboardData', [], (data) => {
+      document.getElementById('companyName').textContent = data.perusahaan.nama || 'Perusahaan Saya';
+      if (data.perusahaan.tema === 'dark') document.body.setAttribute('data-theme', 'dark');
+      const now = new Date();
+      document.getElementById('dayName').textContent = now.toLocaleDateString('id-ID', { weekday: 'long' });
+      document.getElementById('dateDisplay').textContent = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+      renderDashboard(data);
+    }, null, true);
+  </script>
+</body>
+</html>
