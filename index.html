@@ -1657,20 +1657,30 @@ function showGlobalWarningDetail() {
   // ---------------- WRAPPER FETCH KE APPS SCRIPT WEB APP ----------------
   // Menggantikan google.script.run: sekarang manggil endpoint API.gs (doGet/doPost)
   // via fetch biasa, supaya aplikasi bisa jalan mandiri di GitHub Pages.
+  //
+  // 🔧 PERBAIKAN DI VERSI INI: guard clause "API_URL belum diatur" sebelumnya
+  // memakai indexOf('PASTE_URL_WEB_APP') yang TIDAK PERNAH cocok dengan
+  // placeholder aslinya ('PASTE_URL_WEBAPP...', tanpa underscore di WEB_APP),
+  // jadi peringatan itu tidak pernah muncul. Sekarang diganti jadi cek yang
+  // lebih umum: valid kalau diawali "https://" dan bukan berisi kata PASTE.
   function callServer(fnName, args, onSuccess, onError, silent) {
     args = args || [];
     if (!silent) showLoading();
 
-    if (!API_URL || API_URL.indexOf('PASTE_URL_WEB_APP') !== -1) {
+    const urlBelumDiatur = !API_URL || !API_URL.startsWith('https://') || API_URL.toUpperCase().indexOf('PASTE') !== -1;
+    if (urlBelumDiatur) {
       if (!silent) hideLoading();
-      Swal.fire({ icon: 'error', title: 'API_URL belum diatur', text: 'Buka file Script.html, isi konstanta API_URL dengan URL Web App Apps Script kamu (diakhiri /exec).', confirmButtonColor: '#1B4B43' });
+      Swal.fire({ icon: 'error', title: 'API_URL belum diatur', text: 'Isi konstanta API_URL di index.html dengan URL Web App Apps Script kamu (diakhiri /exec).', confirmButtonColor: '#1B4B43' });
       if (onError) onError(new Error('API_URL belum diatur'));
       return;
     }
 
-    const paramNames = ACTION_PARAMS[fnName] || [];
+    const paramNames = ACTION_PARAMS[fnName];
+    if (!paramNames) {
+      console.warn('[callServer] Action "' + fnName + '" belum terdaftar di ACTION_PARAMS.');
+    }
     const params = {};
-    paramNames.forEach((name, i) => { if (args[i] !== undefined) params[name] = args[i]; });
+    (paramNames || []).forEach((name, i) => { if (args[i] !== undefined) params[name] = args[i]; });
 
     const isWrite = WRITE_ACTIONS.has(fnName);
     const request = isWrite
