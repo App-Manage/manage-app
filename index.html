@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Office Management</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1B4B43">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="OfficeApp">
   <style>
   @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
@@ -1657,30 +1664,20 @@ function showGlobalWarningDetail() {
   // ---------------- WRAPPER FETCH KE APPS SCRIPT WEB APP ----------------
   // Menggantikan google.script.run: sekarang manggil endpoint API.gs (doGet/doPost)
   // via fetch biasa, supaya aplikasi bisa jalan mandiri di GitHub Pages.
-  //
-  // 🔧 PERBAIKAN DI VERSI INI: guard clause "API_URL belum diatur" sebelumnya
-  // memakai indexOf('PASTE_URL_WEB_APP') yang TIDAK PERNAH cocok dengan
-  // placeholder aslinya ('PASTE_URL_WEBAPP...', tanpa underscore di WEB_APP),
-  // jadi peringatan itu tidak pernah muncul. Sekarang diganti jadi cek yang
-  // lebih umum: valid kalau diawali "https://" dan bukan berisi kata PASTE.
   function callServer(fnName, args, onSuccess, onError, silent) {
     args = args || [];
     if (!silent) showLoading();
 
-    const urlBelumDiatur = !API_URL || !API_URL.startsWith('https://') || API_URL.toUpperCase().indexOf('PASTE') !== -1;
-    if (urlBelumDiatur) {
+    if (!API_URL || API_URL.indexOf('PASTE_URL_WEB_APP') !== -1) {
       if (!silent) hideLoading();
-      Swal.fire({ icon: 'error', title: 'API_URL belum diatur', text: 'Isi konstanta API_URL di index.html dengan URL Web App Apps Script kamu (diakhiri /exec).', confirmButtonColor: '#1B4B43' });
+      Swal.fire({ icon: 'error', title: 'API_URL belum diatur', text: 'Buka file Script.html, isi konstanta API_URL dengan URL Web App Apps Script kamu (diakhiri /exec).', confirmButtonColor: '#1B4B43' });
       if (onError) onError(new Error('API_URL belum diatur'));
       return;
     }
 
-    const paramNames = ACTION_PARAMS[fnName];
-    if (!paramNames) {
-      console.warn('[callServer] Action "' + fnName + '" belum terdaftar di ACTION_PARAMS.');
-    }
+    const paramNames = ACTION_PARAMS[fnName] || [];
     const params = {};
-    (paramNames || []).forEach((name, i) => { if (args[i] !== undefined) params[name] = args[i]; });
+    paramNames.forEach((name, i) => { if (args[i] !== undefined) params[name] = args[i]; });
 
     const isWrite = WRITE_ACTIONS.has(fnName);
     const request = isWrite
@@ -1831,6 +1828,13 @@ function alertLaundryBudget(kelebihan) {
       document.getElementById('dateDisplay').textContent = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
       renderDashboard(data);
     }, null, true);
+
+    // Registrasi service worker (untuk syarat installable PWA/TWA).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
   </script>
 </body>
 </html>
