@@ -1655,17 +1655,22 @@
     }
 
     function updateEstimasiPreview() {
-        const frekuensi = Number(document.getElementById('ldrSetFrekuensi').value) || 5;
-        const harga = Number(document.getElementById('ldrSetHarga').value) || 0;
+        const freqEl = document.getElementById('ldrSetFrekuensi');
+        const hargaEl = document.getElementById('ldrSetHarga');
+        const prevEl = document.getElementById('ldrEstimasiPreview');
+        if (!prevEl) return;
+        const frekuensi = Number(freqEl ? freqEl.value : 5) || 5;
+        const harga = Number(hargaEl ? hargaEl.value : 0) || 0;
         const estimasi = Math.round(30 / frekuensi);
-        document.getElementById('ldrEstimasiPreview').textContent =
+        const c2Sym = (appCurrency.c2 && appCurrency.c2.symbol) || 'Rp';
+        prevEl.textContent =
             'Estimasi: ' +
             estimasi +
             'x/bulan × ' +
-            harga.toLocaleString() +
-            ' ៛ = ' +
-            (estimasi * harga).toLocaleString() +
-            ' ៛/bulan';
+            c2Sym + ' ' + harga.toLocaleString('id-ID') +
+            ' = ' +
+            c2Sym + ' ' + (estimasi * harga).toLocaleString('id-ID') +
+            '/bulan';
     }
 
     function saveLaundrySettingsUI() {
@@ -2036,26 +2041,65 @@
         </div>
     </div>
 
-    <div class="section-title">Kurs ABA Bank Cambodia</div>
+    <div class="section-title">Pengaturan Mata Uang & Kurs</div>
     <div class="card">
-        <div class="field"><label>1 USD = ? KHR</label><input type="number" id="setKurs" placeholder="4100" /></div>
-        <button class="btn btn-primary btn-block" onclick="saveKurs()">Perbarui Kurs</button>
+        <label style="font-size: 11px; font-weight: 600; color: var(--text-mute); margin-bottom: 8px; display: block;">
+            PILIHAN CEPAT (PRESET)
+        </label>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px;">
+            <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 7px 4px;" onclick="applyCurrencyPreset('PHP_IDR')">
+                🇵🇭 Peso & 🇮🇩 Rupiah
+            </button>
+            <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 7px 4px;" onclick="applyCurrencyPreset('IDR_PHP')">
+                🇮🇩 Rupiah & 🇵🇭 Peso
+            </button>
+            <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 7px 4px;" onclick="applyCurrencyPreset('USD_IDR')">
+                💵 USD & 🇮🇩 Rupiah
+            </button>
+            <button type="button" class="btn btn-outline" style="font-size: 11px; padding: 7px 4px;" onclick="applyCurrencyPreset('USD_KHR')">
+                💵 USD & 🇰🇭 Riel
+            </button>
+        </div>
+
+        <div style="font-weight: 600; font-size: 12px; margin-bottom: 6px; color: var(--primary-light);">
+            Mata Uang Utama (Primer)
+        </div>
+        <div class="grid-3" style="gap: 6px;">
+            <div class="field"><label>Kode</label><input type="text" id="setC1Code" placeholder="PHP" /></div>
+            <div class="field"><label>Nama</label><input type="text" id="setC1Name" placeholder="Peso" /></div>
+            <div class="field"><label>Simbol</label><input type="text" id="setC1Symbol" placeholder="₱" /></div>
+        </div>
+
+        <div style="font-weight: 600; font-size: 12px; margin-top: 6px; margin-bottom: 6px; color: var(--primary-light);">
+            Mata Uang Kedua (Sekunder)
+        </div>
+        <div class="grid-3" style="gap: 6px;">
+            <div class="field"><label>Kode</label><input type="text" id="setC2Code" placeholder="IDR" /></div>
+            <div class="field"><label>Nama</label><input type="text" id="setC2Name" placeholder="Rupiah" /></div>
+            <div class="field"><label>Simbol</label><input type="text" id="setC2Symbol" placeholder="Rp" /></div>
+        </div>
+
+        <div class="field" style="margin-top: 8px;">
+            <label id="lblKursKonversi">Nilai Kurs Konversi (1 PHP = ? IDR)</label>
+            <input type="number" step="any" id="setKurs" placeholder="280" />
+        </div>
+        <button class="btn btn-primary btn-block" onclick="saveCurrencySettings()">💾 Simpan Pengaturan Mata Uang</button>
     </div>
 
     <div class="section-title">Anggaran Harian</div>
     <div class="card">
         <div class="grid-2">
             <div class="field">
-                <label id="lblBudgetBulanan">Anggaran Bulanan (₱)</label
-                ><input type="number" id="setBudgetBulanan" placeholder="400" oninput="updateLimitPreview()" />
+                <label id="lblBudgetBulanan">Anggaran Bulanan (₱)</label>
+                <input type="number" id="setBudgetBulanan" placeholder="400" oninput="updateLimitPreview()" />
             </div>
             <div class="field">
-                <label id="lblTargetTabungan">Target Tabungan (₱)</label
-                ><input type="number" id="setTargetTabungan" placeholder="100" oninput="updateLimitPreview()" />
+                <label id="lblTargetTabungan">Target Tabungan (₱)</label>
+                <input type="number" id="setTargetTabungan" placeholder="100" oninput="updateLimitPreview()" />
             </div>
         </div>
         <div style="font-size: 12px; color: var(--text-mute); margin-bottom: 10px" id="limitHarianPreview">
-            Limit harian: $0.00
+            Limit harian: ₱0.00/hari
         </div>
         <button class="btn btn-primary btn-block" onclick="saveBudgetSettings()">Simpan Anggaran</button>
     </div>
@@ -2104,6 +2148,16 @@
 </div>
 
 <script>
+    function safeSetVal(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.value = (val !== undefined && val !== null) ? val : '';
+    }
+
+    function safeSetText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
     function setNotifAktif(aktif) {
         callServer(
             'saveAppSettings',
@@ -2133,8 +2187,10 @@
     }
 
     function highlightNotifToggle(prefix, aktif) {
-        document.getElementById('btn' + prefix + 'On').classList.toggle('btn-primary', aktif);
-        document.getElementById('btn' + prefix + 'Off').classList.toggle('btn-primary', !aktif);
+        const onBtn = document.getElementById('btn' + prefix + 'On');
+        const offBtn = document.getElementById('btn' + prefix + 'Off');
+        if (onBtn) onBtn.classList.toggle('btn-primary', aktif);
+        if (offBtn) offBtn.classList.toggle('btn-primary', !aktif);
     }
 
     function loadSettings() {
@@ -2142,27 +2198,34 @@
             'getAppSettings',
             [],
             (s) => {
-                document.getElementById('setNamaPerusahaan').value = s.NamaPerusahaan || '';
-                document.getElementById('setLogo').value = s.Logo || '';
-                document.getElementById('setC1Code').value = s.MataUang1_Kode || 'PHP';
-                document.getElementById('setC1Name').value = s.MataUang1_Nama || 'Peso';
-                document.getElementById('setC1Symbol').value = s.MataUang1_Simbol || '₱';
-                document.getElementById('setC2Code').value = s.MataUang2_Kode || 'IDR';
-                document.getElementById('setC2Name').value = s.MataUang2_Nama || 'Rupiah';
-                document.getElementById('setC2Symbol').value = s.MataUang2_Simbol || 'Rp';
-                document.getElementById('setKurs').value = s.KursKonversi || s.KursABA || 280;
+                s = s || {};
+                safeSetVal('setNamaPerusahaan', s.NamaPerusahaan || '');
+                safeSetVal('setLogo', s.Logo || '');
+
+                safeSetVal('setC1Code', s.MataUang1_Kode || 'PHP');
+                safeSetVal('setC1Name', s.MataUang1_Nama || 'Peso');
+                safeSetVal('setC1Symbol', s.MataUang1_Simbol || '₱');
+
+                safeSetVal('setC2Code', s.MataUang2_Kode || 'IDR');
+                safeSetVal('setC2Name', s.MataUang2_Nama || 'Rupiah');
+                safeSetVal('setC2Symbol', s.MataUang2_Simbol || 'Rp');
+
+                safeSetVal('setKurs', s.KursKonversi || s.KursABA || 280);
+
                 setAppCurrency({
                     c1: { code: s.MataUang1_Kode || 'PHP', name: s.MataUang1_Nama || 'Peso', symbol: s.MataUang1_Simbol || '₱' },
                     c2: { code: s.MataUang2_Kode || 'IDR', name: s.MataUang2_Nama || 'Rupiah', symbol: s.MataUang2_Simbol || 'Rp' },
                     kurs: Number(s.KursKonversi || s.KursABA || 280)
                 });
-                document.getElementById('setBudgetBulanan').value = s.BudgetBulanan || 400;
-                document.getElementById('setTargetTabungan').value = s.TargetTabungan || 100;
-                document.getElementById('setTimezone').value = s.Timezone || 'Asia/Phnom_Penh';
+
+                safeSetVal('setBudgetBulanan', s.BudgetBulanan || 400);
+                safeSetVal('setTargetTabungan', s.TargetTabungan || 100);
+                safeSetVal('setTimezone', s.Timezone || 'Asia/Phnom_Penh');
+
                 highlightTheme(s.Tema || 'light');
                 updateLimitPreview();
-                highlightNotifToggle('Notif', s.NotifikasiAktif !== 'false'); // 👈 baru
-                highlightNotifToggle('Suara', s.SuaraNotifikasiAktif !== 'false'); // 👈 baru
+                highlightNotifToggle('Notif', s.NotifikasiAktif !== 'false');
+                highlightNotifToggle('Suara', s.SuaraNotifikasiAktif !== 'false');
             },
             null,
             true
@@ -2171,8 +2234,10 @@
     }
 
     function highlightTheme(t) {
-        document.getElementById('btnLight').classList.toggle('btn-primary', t === 'light');
-        document.getElementById('btnDark').classList.toggle('btn-primary', t === 'dark');
+        const lightBtn = document.getElementById('btnLight');
+        const darkBtn = document.getElementById('btnDark');
+        if (lightBtn) lightBtn.classList.toggle('btn-primary', t === 'light');
+        if (darkBtn) darkBtn.classList.toggle('btn-primary', t === 'dark');
     }
 
     function setTheme(t) {
@@ -2182,213 +2247,79 @@
     }
 
     function saveGeneralSettings() {
+        const nama = document.getElementById('setNamaPerusahaan') ? document.getElementById('setNamaPerusahaan').value : '';
+        const logo = document.getElementById('setLogo') ? document.getElementById('setLogo').value : '';
+        const tz = document.getElementById('setTimezone') ? document.getElementById('setTimezone').value : '';
         const data = {
-            NamaPerusahaan: document.getElementById('setNamaPerusahaan').value,
-            Logo: document.getElementById('setLogo').value,
-            Timezone: document.getElementById('setTimezone').value,
+            NamaPerusahaan: nama,
+            Logo: logo,
+            Timezone: tz,
         };
         callServer('saveAppSettings', [data], () => {
             toastSukses('Pengaturan disimpan');
-            document.getElementById('companyName').textContent = data.NamaPerusahaan;
+            const compEl = document.getElementById('companyName');
+            if (compEl) compEl.textContent = data.NamaPerusahaan;
         });
     }
 
-    
     function applyCurrencyPreset(type) {
         if (type === 'PHP_IDR') {
-            document.getElementById('setC1Code').value = 'PHP';
-            document.getElementById('setC1Name').value = 'Peso';
-            document.getElementById('setC1Symbol').value = '₱';
-            document.getElementById('setC2Code').value = 'IDR';
-            document.getElementById('setC2Name').value = 'Rupiah';
-            document.getElementById('setC2Symbol').value = 'Rp';
-            document.getElementById('setKurs').value = '280';
+            safeSetVal('setC1Code', 'PHP');
+            safeSetVal('setC1Name', 'Peso');
+            safeSetVal('setC1Symbol', '₱');
+            safeSetVal('setC2Code', 'IDR');
+            safeSetVal('setC2Name', 'Rupiah');
+            safeSetVal('setC2Symbol', 'Rp');
+            safeSetVal('setKurs', '280');
         } else if (type === 'IDR_PHP') {
-            document.getElementById('setC1Code').value = 'IDR';
-            document.getElementById('setC1Name').value = 'Rupiah';
-            document.getElementById('setC1Symbol').value = 'Rp';
-            document.getElementById('setC2Code').value = 'PHP';
-            document.getElementById('setC2Name').value = 'Peso';
-            document.getElementById('setC2Symbol').value = '₱';
-            document.getElementById('setKurs').value = '0.0036';
+            safeSetVal('setC1Code', 'IDR');
+            safeSetVal('setC1Name', 'Rupiah');
+            safeSetVal('setC1Symbol', 'Rp');
+            safeSetVal('setC2Code', 'PHP');
+            safeSetVal('setC2Name', 'Peso');
+            safeSetVal('setC2Symbol', '₱');
+            safeSetVal('setKurs', '0.0036');
         } else if (type === 'USD_IDR') {
-            document.getElementById('setC1Code').value = 'USD';
-            document.getElementById('setC1Name').value = 'Dollar';
-            document.getElementById('setC1Symbol').value = String.fromCharCode(36); // $
-            document.getElementById('setC2Code').value = 'IDR';
-            document.getElementById('setC2Name').value = 'Rupiah';
-            document.getElementById('setC2Symbol').value = 'Rp';
-            document.getElementById('setKurs').value = '16000';
+            safeSetVal('setC1Code', 'USD');
+            safeSetVal('setC1Name', 'Dollar');
+            safeSetVal('setC1Symbol', '$');
+            safeSetVal('setC2Code', 'IDR');
+            safeSetVal('setC2Name', 'Rupiah');
+            safeSetVal('setC2Symbol', 'Rp');
+            safeSetVal('setKurs', '16000');
         } else if (type === 'USD_KHR') {
-            document.getElementById('setC1Code').value = 'USD';
-            document.getElementById('setC1Name').value = 'Dollar';
-            document.getElementById('setC1Symbol').value = String.fromCharCode(36); // $
-            document.getElementById('setC2Code').value = 'KHR';
-            document.getElementById('setC2Name').value = 'Riel';
-            document.getElementById('setC2Symbol').value = '៛';
-            document.getElementById('setKurs').value = '4100';
+            safeSetVal('setC1Code', 'USD');
+            safeSetVal('setC1Name', 'Dollar');
+            safeSetVal('setC1Symbol', '$');
+            safeSetVal('setC2Code', 'KHR');
+            safeSetVal('setC2Name', 'Riel');
+            safeSetVal('setC2Symbol', '៛');
+            safeSetVal('setKurs', '4100');
         }
-        const c1 = document.getElementById('setC1Code').value;
-        const c2 = document.getElementById('setC2Code').value;
-        document.getElementById('lblKursKonversi').textContent = 'Nilai Kurs Konversi (1 ' + c1 + ' = ? ' + c2 + ')';
+        const c1El = document.getElementById('setC1Code');
+        const c2El = document.getElementById('setC2Code');
+        const c1 = c1El ? c1El.value : 'PHP';
+        const c2 = c2El ? c2El.value : 'IDR';
+        safeSetText('lblKursKonversi', 'Nilai Kurs Konversi (1 ' + c1 + ' = ? ' + c2 + ')');
     }
 
     function saveCurrencySettings() {
+        const c1Code = document.getElementById('setC1Code') ? document.getElementById('setC1Code').value : 'PHP';
+        const c1Name = document.getElementById('setC1Name') ? document.getElementById('setC1Name').value : 'Peso';
+        const c1Symbol = document.getElementById('setC1Symbol') ? document.getElementById('setC1Symbol').value : '₱';
+
+        const c2Code = document.getElementById('setC2Code') ? document.getElementById('setC2Code').value : 'IDR';
+        const c2Name = document.getElementById('setC2Name') ? document.getElementById('setC2Name').value : 'Rupiah';
+        const c2Symbol = document.getElementById('setC2Symbol') ? document.getElementById('setC2Symbol').value : 'Rp';
+
+        const kurs = document.getElementById('setKurs') ? document.getElementById('setKurs').value : '280';
+
         const data = {
-            c1Code: document.getElementById('setC1Code').value,
-            c1Name: document.getElementById('setC1Name').value,
-            c1Symbol: document.getElementById('setC1Symbol').value,
-            c2Code: document.getElementById('setC2Code').value,
-            c2Name: document.getElementById('setC2Name').value,
-            c2Symbol: document.getElementById('setC2Symbol').value,
-            kurs: document.getElementById('setKurs').value
+            c1Code, c1Name, c1Symbol,
+            c2Code, c2Name, c2Symbol,
+            kurs
         };
-        callServer('saveCurrencyConfig', [data], function(res) {
-            if (res && res.currency) setAppCurrency(res.currency);
-            toastSukses('Pengaturan mata uang & kurs berhasil disimpan!');
-            loadSettings();
-        });
-    }
 
-    function saveKurs() {
-        const kurs = document.getElementById('setKurs').value;
-        callServer('updateKurs', [kurs], function() {
-            toastSukses('Kurs diperbarui: 1 ' + (appCurrency.c1 ? appCurrency.c1.code : 'PHP') + ' = ' + kurs + ' ' + (appCurrency.c2 ? appCurrency.c2.code : 'IDR'));
-        });
-    }
-
-    function doBackup() {
-        callServer('backupSpreadsheet', [], (res) => {
-            Swal.fire({
-                icon: 'success',
-                title: 'Backup Berhasil',
-                html: `<a href="${res.url}" target="_blank">${res.name}</a>`,
-                confirmButtonColor: '#1B4B43',
-            });
-            loadSettings();
-        });
-    }
-
-    function renderBackupList(list) {
-        const container = document.getElementById('backupList');
-        if (!list.length) {
-            container.innerHTML = '';
-            return;
-        }
-        container.innerHTML = list
-            .slice(0, 5)
-            .map(
-                (b) => `
-      <div class="list-item">
-        <div class="main"><div class="title">${b.name}</div></div>
-        <a class="btn btn-sm btn-outline" href="${b.url}" target="_top">Buka</a>
-      </div>
-    `
-            )
-            .join('');
-    }
-
-    function updateLimitPreview() {
-        const budget = Number(document.getElementById('setBudgetBulanan').value) || 0;
-        const tabungan = Number(document.getElementById('setTargetTabungan').value) || 0;
-        const limit = ((budget - tabungan) / 30).toFixed(2);
-        document.getElementById('limitHarianPreview').textContent = 'Limit harian: ' + fmtC1(limit) + '/hari';
-    }
-
-    function saveBudgetSettings() {
-        const data = {
-            BudgetBulanan: document.getElementById('setBudgetBulanan').value,
-            TargetTabungan: document.getElementById('setTargetTabungan').value,
-        };
-        callServer('saveAppSettings', [data], () => {
-            toastSukses('Anggaran diperbarui');
-            updateLimitPreview();
-        });
-    }
-</script>
-;
-            document.getElementById('setC2Code').value = 'IDR';
-            document.getElementById('setC2Name').value = 'Rupiah';
-            document.getElementById('setC2Symbol').value = 'Rp';
-            document.getElementById('setKurs').value = '16000';
-        } else if (type === 'USD_KHR') {
-            document.getElementById('setC1Code').value = 'USD';
-            document.getElementById('setC1Name').value = 'Dollar';
-            document.getElementById('setC1Symbol').value = '
-        const kurs = document.getElementById('setKurs').value;
-        callServer('updateKursABA', [kurs], () => toastSukses('Kurs ABA diperbarui: 1 USD = ' + kurs + ' KHR'));
-    }
-
-    function doBackup() {
-        callServer('backupSpreadsheet', [], (res) => {
-            Swal.fire({
-                icon: 'success',
-                title: 'Backup Berhasil',
-                html: `<a href="${res.url}" target="_blank">${res.name}</a>`,
-                confirmButtonColor: '#1B4B43',
-            });
-            loadSettings();
-        });
-    }
-
-    function renderBackupList(list) {
-        const container = document.getElementById('backupList');
-        if (!list.length) {
-            container.innerHTML = '';
-            return;
-        }
-        container.innerHTML = list
-            .slice(0, 5)
-            .map(
-                (b) => `
-      <div class="list-item">
-        <div class="main"><div class="title">${b.name}</div></div>
-        <a class="btn btn-sm btn-outline" href="${b.url}" target="_top">Buka</a>
-      </div>
-    `
-            )
-            .join('');
-    }
-
-    function updateLimitPreview() {
-        const budget = Number(document.getElementById('setBudgetBulanan').value) || 0;
-        const tabungan = Number(document.getElementById('setTargetTabungan').value) || 0;
-        const limit = ((budget - tabungan) / 30).toFixed(2);
-        document.getElementById('limitHarianPreview').textContent = 'Limit harian: ' + fmtC1(limit) + '/hari';
-    }
-
-    function saveBudgetSettings() {
-        const data = {
-            BudgetBulanan: document.getElementById('setBudgetBulanan').value,
-            TargetTabungan: document.getElementById('setTargetTabungan').value,
-        };
-        callServer('saveAppSettings', [data], () => {
-            toastSukses('Anggaran diperbarui');
-            updateLimitPreview();
-        });
-    }
-</script>
-;
-            document.getElementById('setC2Code').value = 'KHR';
-            document.getElementById('setC2Name').value = 'Riel';
-            document.getElementById('setC2Symbol').value = '៛';
-            document.getElementById('setKurs').value = '4100';
-        }
-        const c1 = document.getElementById('setC1Code').value;
-        const c2 = document.getElementById('setC2Code').value;
-        document.getElementById('lblKursKonversi').textContent = 'Nilai Kurs Konversi (1 ' + c1 + ' = ? ' + c2 + ')';
-    }
-
-    function saveCurrencySettings() {
-        const data = {
-            c1Code: document.getElementById('setC1Code').value,
-            c1Name: document.getElementById('setC1Name').value,
-            c1Symbol: document.getElementById('setC1Symbol').value,
-            c2Code: document.getElementById('setC2Code').value,
-            c2Name: document.getElementById('setC2Name').value,
-            c2Symbol: document.getElementById('setC2Symbol').value,
-            kurs: document.getElementById('setKurs').value
-        };
         callServer('saveCurrencyConfig', [data], (res) => {
             if (res && res.currency) setAppCurrency(res.currency);
             toastSukses('Pengaturan mata uang & kurs berhasil disimpan!');
@@ -2396,11 +2327,6 @@
         });
     }
 
-    function saveKurs() {
-        const kurs = document.getElementById('setKurs').value;
-        callServer('updateKursABA', [kurs], () => toastSukses('Kurs ABA diperbarui: 1 USD = ' + kurs + ' KHR'));
-    }
-
     function doBackup() {
         callServer('backupSpreadsheet', [], (res) => {
             Swal.fire({
@@ -2415,7 +2341,8 @@
 
     function renderBackupList(list) {
         const container = document.getElementById('backupList');
-        if (!list.length) {
+        if (!container) return;
+        if (!list || !list.length) {
             container.innerHTML = '';
             return;
         }
@@ -2433,16 +2360,20 @@
     }
 
     function updateLimitPreview() {
-        const budget = Number(document.getElementById('setBudgetBulanan').value) || 0;
-        const tabungan = Number(document.getElementById('setTargetTabungan').value) || 0;
+        const budgetEl = document.getElementById('setBudgetBulanan');
+        const tabunganEl = document.getElementById('setTargetTabungan');
+        const budget = Number(budgetEl ? budgetEl.value : 0) || 0;
+        const tabungan = Number(tabunganEl ? tabunganEl.value : 0) || 0;
         const limit = ((budget - tabungan) / 30).toFixed(2);
-        document.getElementById('limitHarianPreview').textContent = 'Limit harian: ' + fmtC1(limit) + '/hari';
+        safeSetText('limitHarianPreview', 'Limit harian: ' + fmtC1(limit) + '/hari');
     }
 
     function saveBudgetSettings() {
+        const budgetEl = document.getElementById('setBudgetBulanan');
+        const tabunganEl = document.getElementById('setTargetTabungan');
         const data = {
-            BudgetBulanan: document.getElementById('setBudgetBulanan').value,
-            TargetTabungan: document.getElementById('setTargetTabungan').value,
+            BudgetBulanan: budgetEl ? budgetEl.value : 400,
+            TargetTabungan: tabunganEl ? tabunganEl.value : 100,
         };
         callServer('saveAppSettings', [data], () => {
             toastSukses('Anggaran diperbarui');
@@ -2450,7 +2381,6 @@
         });
     }
 </script>
-
             </div>
 
             <div class="bottomnav">
