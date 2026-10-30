@@ -1,7 +1,7 @@
 // Service worker minimal — cuma buat memenuhi syarat "installable" PWA.
 // Tidak melakukan caching agresif supaya data (dashboard, transaksi, dll)
 // selalu diambil fresh dari API, bukan dari cache basi.
-const CACHE_NAME = 'office-app-shell-v1';
+const CACHE_NAME = 'office-app-shell-v2';
 const APP_SHELL = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -20,5 +20,5 @@ self.addEventListener('activate', (event) => {
 // fallback ke cache cuma kalau offline.
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((r) => r || Response.error())));
 });
