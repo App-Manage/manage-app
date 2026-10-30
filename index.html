@@ -1438,6 +1438,22 @@
                             <label>Pemilik Dana</label>
                             <select id="trxOwner"></select>
                         </div>
+                        <div class="field">
+                            <label>Jenis Transaksi</label>
+                            <div class="grid-2">
+                                <button type="button" class="btn btn-outline" id="btnTrxMasuk" onclick="setTrxArah(1)">
+                                    ➕ Pemasukan
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-outline"
+                                    id="btnTrxKeluar"
+                                    onclick="setTrxArah(-1)"
+                                >
+                                    ➖ Pengeluaran
+                                </button>
+                            </div>
+                        </div>
                         <div class="grid-2">
                             <div class="field">
                                 <label>Mata Uang</label>
@@ -1447,13 +1463,14 @@
                                 </select>
                             </div>
                             <div class="field">
-                                <label>Nominal (+/-)</label>
+                                <label>Nominal</label>
                                 <input
                                     type="number"
                                     step="any"
+                                    inputmode="decimal"
                                     id="trxNominal"
                                     class="nominal-input"
-                                    placeholder="cth: 100000 atau -50000"
+                                    placeholder="cth: 100000"
                                     oninput="markNominalColor()"
                                 />
                             </div>
@@ -1470,7 +1487,7 @@
                             Simpan Transaksi
                         </button>
                         <div style="font-size: 11px; color: var(--text-mute); margin-top: 8px">
-                            Angka positif = tambah saldo · Angka negatif = kurangi saldo
+                            Pemasukan = tambah saldo · Pengeluaran = kurangi saldo (tidak perlu mengetik tanda minus)
                         </div>
                     </div>
 
@@ -1524,17 +1541,38 @@
                         loadTransactions();
                     }
 
+                    // Arah transaksi dipilih lewat tombol (keyboard HP sering tidak punya tanda minus).
+                    // 1 = pemasukan (tambah saldo), -1 = pengeluaran (kurangi saldo), 0 = belum dipilih.
+                    let trxArah = 0;
+
+                    function setTrxArah(a) {
+                        trxArah = a;
+                        document.getElementById('btnTrxMasuk').classList.toggle('btn-primary', a === 1);
+                        document.getElementById('btnTrxKeluar').classList.toggle('btn-primary', a === -1);
+                        markNominalColor();
+                    }
+
+                    // Nominal bertanda: angka positif mengikuti tombol; kalau diketik negatif (keyboard komputer) tetap dihormati.
+                    function nominalBertanda_() {
+                        const raw = Number(document.getElementById('trxNominal').value);
+                        if (!raw) return 0;
+                        if (raw < 0) return raw;
+                        return trxArah === -1 ? -raw : raw;
+                    }
+
                     function markNominalColor() {
                         const el = document.getElementById('trxNominal');
                         el.classList.remove('pos', 'neg');
-                        if (Number(el.value) > 0) el.classList.add('pos');
-                        if (Number(el.value) < 0) el.classList.add('neg');
+                        const raw = Number(el.value);
+                        if (!raw) return;
+                        if (raw < 0 || trxArah === -1) el.classList.add('neg');
+                        else if (trxArah === 1) el.classList.add('pos');
                     }
 
                     function submitTransaction() {
                         const ownerId = document.getElementById('trxOwner').value;
                         const currency = document.getElementById('trxCurrency').value;
-                        const nominal = document.getElementById('trxNominal').value;
+                        const rawNominal = Number(document.getElementById('trxNominal').value);
                         const kategori = document.getElementById('trxKategori').value;
                         const keterangan = document.getElementById('trxKeterangan').value;
 
@@ -1542,10 +1580,19 @@
                             Swal.fire('Pemilik dana belum dipilih', '', 'warning');
                             return;
                         }
-                        if (!nominal || Number(nominal) === 0) {
-                            Swal.fire('Nominal wajib diisi (boleh negatif)', '', 'warning');
+                        if (!rawNominal) {
+                            Swal.fire('Nominal wajib diisi', '', 'warning');
                             return;
                         }
+                        if (rawNominal > 0 && trxArah === 0) {
+                            Swal.fire(
+                                'Pilih jenis transaksi',
+                                'Tekan ➕ Pemasukan atau ➖ Pengeluaran dulu.',
+                                'warning'
+                            );
+                            return;
+                        }
+                        const nominal = nominalBertanda_();
 
                         callServer(
                             'addTransaction',
