@@ -707,7 +707,7 @@
                     <circle class="ring-fg" id="ringUsd" cx="50" cy="50" r="42" stroke="#2E7D5B"></circle>
                 </svg>
                 <div class="ring-center">
-                    <div class="amount" id="valUsd">₱0.00</div>
+                    <div class="amount" id="valUsd">USD 0.00</div>
                 </div>
             </div>
             <div class="ring-label" id="labelRingC1">🇵🇭 SALDO PESO</div>
@@ -720,7 +720,7 @@
                     <circle class="ring-fg" id="ringKhr" cx="50" cy="50" r="42" stroke="#C9A227"></circle>
                 </svg>
                 <div class="ring-center">
-                    <div class="amount" id="valKhr">Rp 0</div>
+                    <div class="amount" id="valKhr">USD 0</div>
                 </div>
             </div>
             <div class="ring-label" id="labelRingC2">🇮🇩 SALDO RUPIAH</div>
@@ -744,15 +744,15 @@
 
     <div class="card-flat grid-3" style="margin-top: 10px">
         <div class="stat-mini">
-            <div class="num" id="statKas">₱0</div>
+            <div class="num" id="statKas">USD 0</div>
             <div class="label">Total Kas</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="statModal">₱0</div>
+            <div class="num" id="statModal">USD 0</div>
             <div class="label">Total Modal</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="statHak">₱0</div>
+            <div class="num" id="statHak">USD 0</div>
             <div class="label">Hak Pribadi</div>
         </div>
     </div>
@@ -760,15 +760,15 @@
     <div class="section-title">Pemisahan Dana</div>
     <div class="card-flat grid-3">
         <div class="stat-mini">
-            <div class="num" id="statDanaPribadi">₱0</div>
+            <div class="num" id="statDanaPribadi">USD 0</div>
             <div class="label">💰 Pribadi</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="statDanaTitipan">₱0</div>
+            <div class="num" id="statDanaTitipan">USD 0</div>
             <div class="label">🤝 Titipan</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="statTabungan">₱0</div>
+            <div class="num" id="statTabungan">USD 0</div>
             <div class="label">🏦 Tabungan</div>
         </div>
     </div>
@@ -795,26 +795,26 @@
     <div class="section-title">Anggaran Harian</div>
     <div class="card-flat grid-3" id="budgetCard">
         <div class="stat-mini">
-            <div class="num" id="budgetLimit">₱0.00</div>
+            <div class="num" id="budgetLimit">USD 0.00</div>
             <div class="label">Limit Harian</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="budgetSpent">$0.00</div>
+            <div class="num" id="budgetSpent">USD 0</div>
             <div class="label">Terpakai</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="budgetSisa">$0.00</div>
+            <div class="num" id="budgetSisa">USD 0</div>
             <div class="label">Sisa Hari Ini</div>
         </div>
     </div>
 
     <div class="card-flat grid-2" id="budgetBreakdownCard" style="margin-top: -4px">
         <div class="stat-mini">
-            <div class="num" id="budgetPribadi">$0.00</div>
+            <div class="num" id="budgetPribadi">USD 0</div>
             <div class="label">💰 Dari Pribadi</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="budgetTabungan">$0.00</div>
+            <div class="num" id="budgetTabungan">USD 0</div>
             <div class="label">🏦 Dari Tabungan</div>
         </div>
     </div>
@@ -827,11 +827,11 @@
             <div class="label">Dilakukan</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="dashLdrBiaya">0៛</div>
+            <div class="num" id="dashLdrBiaya">USD 0</div>
             <div class="label">Pengeluaran</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="dashLdrSisaBudget">0៛</div>
+            <div class="num" id="dashLdrSisaBudget">USD 0</div>
             <div class="label">Sisa Budget</div>
         </div>
     </div>
@@ -841,9 +841,9 @@
         <div style="font-size: 11px; color: var(--text-mute); font-weight: 600; margin-bottom: 4px">
             ESTIMASI TABUNGAN AKHIR BULAN
         </div>
-        <div id="dashProyeksiNum" style="font-family: var(--font-mono); font-size: 20px; font-weight: 700">$0.00</div>
+        <div id="dashProyeksiNum" style="font-family: var(--font-mono); font-size: 20px; font-weight: 700">USD 0</div>
         <div style="font-size: 11px; color: var(--text-mute); margin-top: 4px">
-            Target: $<span id="dashProyeksiTarget">0</span>
+            Target: <span id="dashProyeksiTarget">USD 0</span>
         </div>
     </div>
 
@@ -872,25 +872,25 @@
 
     function renderDashLaundry(s) {
         document.getElementById('dashLdrCount').textContent = s.jumlahLaundry + '/' + s.estimasiPerBulan;
-        document.getElementById('dashLdrBiaya').textContent = Math.round(s.totalBiaya).toLocaleString() + '៛';
-        document.getElementById('dashLdrSisaBudget').textContent = Math.round(s.sisaBudget).toLocaleString() + '៛';
+        document.getElementById('dashLdrBiaya').textContent = fmtC2(s.totalBiaya);
+        document.getElementById('dashLdrSisaBudget').textContent = fmtC2(s.sisaBudget);
         document.getElementById('dashLaundryCard').classList.toggle('merah', s.status === 'bahaya');
     }
 
     function renderDashProyeksi(p) {
         const el = document.getElementById('dashProyeksiNum');
-        el.textContent = '$' + p.proyeksiTabungan.toFixed(2);
+        el.textContent = fmtC1(p.proyeksiTabungan);
         el.style.color = p.targetTerancam ? 'var(--danger)' : 'var(--success)';
-        document.getElementById('dashProyeksiTarget').textContent = p.targetTabungan.toFixed(0);
+        document.getElementById('dashProyeksiTarget').textContent = fmtC1(p.targetTabungan);
         document.getElementById('dashProyeksiCard').classList.toggle('merah', p.targetTerancam);
     }
 
     function renderBudgetStatus(b) {
-        document.getElementById('budgetLimit').textContent = '$' + b.limitHarian.toFixed(2);
-        document.getElementById('budgetSpent').textContent = '$' + b.pengeluaranHariIni.toFixed(2);
+        document.getElementById('budgetLimit').textContent = fmtC1(b.limitHarian);
+        document.getElementById('budgetSpent').textContent = fmtC1(b.pengeluaranHariIni);
 
         const sisaEl = document.getElementById('budgetSisa');
-        sisaEl.textContent = '$' + b.sisaHarian.toFixed(2);
+        sisaEl.textContent = fmtC1(b.sisaHarian);
         sisaEl.style.color = b.sisaHarian < 0 ? 'var(--danger)' : 'var(--success)';
 
         const card = document.getElementById('budgetCard');
@@ -898,8 +898,8 @@
         if (b.melebihiLimit) alertBudgetMerah(b.kelebihan);
 
         // Breakdown per kategori dana
-        document.getElementById('budgetPribadi').textContent = '$' + Number(b.pengeluaranPribadi || 0).toFixed(2);
-        document.getElementById('budgetTabungan').textContent = '$' + Number(b.pengeluaranTabungan || 0).toFixed(2);
+        document.getElementById('budgetPribadi').textContent = fmtC1(Number(b.pengeluaranPribadi || 0));
+        document.getElementById('budgetTabungan').textContent = fmtC1(Number(b.pengeluaranTabungan || 0));
 
         // Rincian per kategori transaksi (Operasional, Gaji, dll)
         renderBudgetKategoriList(b.rincianKategori || []);
@@ -918,7 +918,7 @@
             (k) => `
       <div class="list-item">
         <div class="main"><div class="title">${k.kategori}</div></div>
-        <span class="badge badge-red">$${k.total.toFixed(2)}</span>
+        <span class="badge badge-red">${fmtC1(k.total)}</span>
       </div>
     `
         )
@@ -926,18 +926,18 @@
   `;
     }
     function renderDashboard(data) {
-        animateCounter(document.getElementById('valUsd'), data.saldoUSD, '$', 2);
-        animateCounter(document.getElementById('valKhr'), data.saldoKHR, '៛', 0);
+        animateCounter(document.getElementById('valUsd'), data.saldoUSD, 'C1', 2);
+        animateCounter(document.getElementById('valKhr'), data.saldoKHR, 'C2', 2);
 
         document.getElementById('statKaryawan').textContent = data.totalKaryawan;
         document.getElementById('statHadir').textContent = data.hadirHariIni;
         document.getElementById('statAlpha').textContent = data.tidakHadir;
-        document.getElementById('statKas').textContent = '$' + Number(data.totalKas).toFixed(2);
-        document.getElementById('statModal').textContent = '$' + Number(data.totalModal).toFixed(2);
-        document.getElementById('statHak').textContent = '$' + Number(data.hakPribadi).toFixed(2);
-        document.getElementById('statDanaPribadi').textContent = '$' + Number(data.totalDanaPribadi || 0).toFixed(2);
-        document.getElementById('statDanaTitipan').textContent = '$' + Number(data.totalDanaTitipan || 0).toFixed(2);
-        document.getElementById('statTabungan').textContent = '$' + Number(data.totalTabungan || 0).toFixed(2);
+        document.getElementById('statKas').textContent = fmtC1(Number(data.totalKas));
+        document.getElementById('statModal').textContent = fmtC1(Number(data.totalModal));
+        document.getElementById('statHak').textContent = fmtC1(Number(data.hakPribadi));
+        document.getElementById('statDanaPribadi').textContent = fmtC1(Number(data.totalDanaPribadi || 0));
+        document.getElementById('statDanaTitipan').textContent = fmtC1(Number(data.totalDanaTitipan || 0));
+        document.getElementById('statTabungan').textContent = fmtC1(Number(data.totalTabungan || 0));
 
         const pct = data.totalModal > 0 ? Math.min(100, (data.totalKas / (data.totalModal * 1.5)) * 100) : 100;
         setRing(document.getElementById('ringUsd'), pct);
@@ -985,7 +985,7 @@
         const card = document.getElementById(cardId);
         const text = document.getElementById(textId);
         card.classList.toggle('merah', merah);
-        text.textContent = merah ? 'MERAH -$' + Number(kekurangan).toFixed(2) : 'AMAN';
+        text.textContent = merah ? 'MERAH -' + fmtC1(Number(kekurangan)) : 'AMAN';
         text.style.color = merah ? 'var(--danger)' : 'var(--success)';
     }
 
@@ -1018,8 +1018,11 @@
             'getFinanceChartData',
             [],
             (rows) => {
-                const arr = [['Tanggal', 'Saldo (' + (appCurrency.c1 ? appCurrency.c1.code : 'PHP') + ')']];
-                rows.forEach((r) => arr.push([r.tanggal.slice(5), r.saldo]));
+                const arr = [['Tanggal', 'Saldo (' + (appCurrency.displayCode || 'PHP') + ')']];
+                rows.forEach((r) => {
+                    const converted = convertToDisplayAmount(r.saldo, appCurrency.c1.code);
+                    arr.push([r.tanggal.slice(5), converted === null ? r.saldo : converted]);
+                });
                 if (arr.length === 1) arr.push(['-', 0]);
                 const data = google.visualization.arrayToDataTable(arr);
                 const chart = new google.visualization.AreaChart(document.getElementById('chartFinance'));
@@ -1053,8 +1056,11 @@
             'getOwnerPieChartData',
             [pieJenisAktif],
             (owners) => {
-                const arr = [['Pemilik', 'Saldo (' + (appCurrency.c1 ? appCurrency.c1.code : 'PHP') + ')']];
-                (owners || []).forEach((o) => arr.push([o.nama, Number(o.saldoUSD)]));
+                const arr = [['Pemilik', 'Saldo (' + (appCurrency.displayCode || 'PHP') + ')']];
+                (owners || []).forEach((o) => {
+                    const converted = convertToDisplayAmount(Number(o.saldoUSD), appCurrency.c1.code);
+                    arr.push([o.nama, converted === null ? Number(o.saldoUSD) : converted]);
+                });
                 if (arr.length === 1) arr.push(['Belum ada data', 1]);
                 const data = google.visualization.arrayToDataTable(arr);
                 const chart = new google.visualization.PieChart(document.getElementById('chartOwnerPie'));
@@ -1318,11 +1324,11 @@
             <div class="label">Jml Transaksi</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="finMasuk">$0</div>
+            <div class="num" id="finMasuk">USD 0</div>
             <div class="label">Pemasukan</div>
         </div>
         <div class="stat-mini">
-            <div class="num" id="finKeluar">$0</div>
+            <div class="num" id="finKeluar">USD 0</div>
             <div class="label">Pengeluaran</div>
         </div>
     </div>
@@ -1388,8 +1394,8 @@
             [],
             (data) => {
                 document.getElementById('finTrxCount').textContent = data.jumlahTransaksi;
-                document.getElementById('finMasuk').textContent = '$' + data.totalPemasukan.toFixed(2);
-                document.getElementById('finKeluar').textContent = '$' + data.totalPengeluaran.toFixed(2);
+                document.getElementById('finMasuk').textContent = fmtC1(data.totalPemasukan);
+                document.getElementById('finKeluar').textContent = fmtC1(data.totalPengeluaran);
 
                 const sel = document.getElementById('trxOwner');
                 sel.innerHTML = data.owners
@@ -1439,7 +1445,7 @@
                 Swal.fire('Gagal', res.message, 'error');
                 return;
             }
-            toastDelta(res.naik, Math.abs(Number(nominal)).toLocaleString() + ' ' + currency);
+            toastDelta(res.naik, formatFromCurrency(Math.abs(Number(nominal)), currency));
             document.getElementById('trxNominal').value = '';
             document.getElementById('trxKategori').value = '';
             document.getElementById('trxKeterangan').value = '';
@@ -1480,7 +1486,7 @@
           <div class="title">${t.PemilikDana} · ${t.Kategori}</div>
           <div class="sub">${t.NomorTransaksi} · ${t.Tanggal} ${t.Jam}</div>
         </div>
-        <span class="badge ${t.Nominal > 0 ? 'badge-green' : 'badge-red'}">${t.Nominal > 0 ? '+' : ''}${Number(t.Nominal).toLocaleString()} ${t.MataUang}</span>
+        <span class="badge ${t.Nominal > 0 ? 'badge-green' : 'badge-red'}">${t.Nominal > 0 ? '+' : ''}${formatFromCurrency(Number(t.Nominal), t.MataUang)}</span>
         <button class="btn-icon" style="margin-left:6px;color:var(--danger);" onclick="confirmDeleteTransaction('${t.NomorTransaksi}')">
           <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
         </button>
@@ -1549,7 +1555,7 @@
                 <label>Berat (kg)</label><input type="number" step="0.1" id="ldrBerat" placeholder="cth: 3.8" />
             </div>
             <div class="field">
-                <label id="lblLdrBiaya">Biaya (Rupiah)</label><input type="number" id="ldrBiayaInput" placeholder="15000" />
+                <label id="lblLdrBiaya">Biaya (mata uang sekunder)</label><input type="number" id="ldrBiayaInput" placeholder="15000" />
             </div>
         </div>
         <div class="field">
@@ -1562,7 +1568,7 @@
     <div class="card">
         <div class="grid-2">
             <div class="field">
-                <label>Harga per Laundry (Riel)</label
+                <label>Harga per Laundry (mata uang sekunder)</label
                 ><input type="number" id="ldrSetHarga" oninput="updateEstimasiPreview()" />
             </div>
             <div class="field">
@@ -1572,7 +1578,7 @@
         </div>
         <div class="grid-2">
             <div class="field"><label>Kapasitas Paket (kg)</label><input type="number" id="ldrSetKapasitas" /></div>
-            <div class="field"><label id="lblLdrBudget">Budget Bulanan (Rupiah)</label><input type="number" id="ldrSetBudget" /></div>
+            <div class="field"><label id="lblLdrBudget">Budget Bulanan (mata uang sekunder)</label><input type="number" id="ldrSetBudget" /></div>
         </div>
         <div class="field">
             <label>Sumber Dana Laundry</label>
@@ -1601,8 +1607,8 @@
         document.getElementById('ldrCount').textContent = s.jumlahLaundry;
         document.getElementById('ldrTarget').textContent = s.estimasiPerBulan;
         document.getElementById('ldrSisa').textContent = s.sisaLaundry;
-        document.getElementById('ldrBiaya').textContent = Math.round(s.totalBiaya).toLocaleString() + ' ៛';
-        document.getElementById('ldrSisaBudget').textContent = Math.round(s.sisaBudget).toLocaleString() + ' ៛';
+        document.getElementById('ldrBiaya').textContent = fmtC2(s.totalBiaya);
+        document.getElementById('ldrSisaBudget').textContent = fmtC2(s.sisaBudget);
         document.getElementById('ldrTerakhir').textContent = s.laundryTerakhir || '-';
         document.getElementById('ldrJadwal').textContent = s.jadwalBerikutnya || '-';
 
@@ -1628,7 +1634,7 @@
           <div class="title">${l.BeratKg} kg ${l.Catatan ? '· ' + l.Catatan : ''}</div>
           <div class="sub">${l.Tanggal}</div>
         </div>
-        <span class="badge badge-mute">${Number(l.Biaya).toLocaleString()} ៛</span>
+        <span class="badge badge-mute">${fmtC2(Number(l.Biaya))}</span>
       </div>
     `
             )
@@ -1662,14 +1668,14 @@
         const frekuensi = Number(freqEl ? freqEl.value : 5) || 5;
         const harga = Number(hargaEl ? hargaEl.value : 0) || 0;
         const estimasi = Math.round(30 / frekuensi);
-        const c2Sym = (appCurrency.c2 && appCurrency.c2.symbol) || 'Rp';
+        const c2Sym = (appCurrency.c2 && appCurrency.c2.symbol) || appCurrency.c2.code;
         prevEl.textContent =
             'Estimasi: ' +
             estimasi +
             'x/bulan × ' +
-            c2Sym + ' ' + harga.toLocaleString('id-ID') +
+            fmtC2(harga) +
             ' = ' +
-            c2Sym + ' ' + (estimasi * harga).toLocaleString('id-ID') +
+            fmtC2(estimasi * harga) +
             '/bulan';
     }
 
@@ -1786,7 +1792,7 @@
         <div class="avatar" style="background:${o.Warna};">${o.Icon}</div>
         <div class="main">
           <div class="title">${o.Nama}</div>
-          <div class="sub">${fmtC1(o.SaldoUSD)} · ${fmtC2(o.SaldoKHR)}</div>
+          <div class="sub">${fmtC1(o.SaldoUSD)}</div>
         </div>
         <span class="badge ${o.Status === 'Aktif' ? 'badge-green' : 'badge-mute'}" style="cursor:pointer;"
           onclick="toggleOwnerStatus('${o.ID}','${o.Status}')">${o.Status}</span>
@@ -1801,7 +1807,7 @@
     }
 
     function formatKHRDisplay_(khr) {
-        return '៛' + Math.round(Number(khr || 0)).toLocaleString('en-US');
+        return fmtC2(Number(khr || 0));
     }
 
     function toggleOwnerStatus(id, current) {
@@ -1852,8 +1858,8 @@
                 : `
           <input id="swModal" class="swal2-input" type="number" placeholder="Modal Awal / Saldo Titipan">
           <select id="swMataUang" class="swal2-input">
-            <option value="USD">USD</option>
-            <option value="KHR">KHR (Riel)</option>
+            <option value="${appCurrency.c1.code}">${appCurrency.c1.code} (${appCurrency.c1.name})</option>
+            <option value="${appCurrency.c2.code}">${appCurrency.c2.code} (${appCurrency.c2.name})</option>
           </select>
         `
         }
@@ -1974,8 +1980,8 @@
                     document.getElementById('reportSummaryCard').innerHTML = `
           <div class="grid-3">
             <div class="stat-mini"><div class="num">${r.totalTransaksi}</div><div class="label">Transaksi</div></div>
-            <div class="stat-mini"><div class="num">$${r.totalPemasukan.toFixed(0)}</div><div class="label">Pemasukan</div></div>
-            <div class="stat-mini"><div class="num">$${r.totalPengeluaran.toFixed(0)}</div><div class="label">Pengeluaran</div></div>
+            <div class="stat-mini"><div class="num">${fmtC1(r.totalPemasukan)}</div><div class="label">Pemasukan</div></div>
+            <div class="stat-mini"><div class="num">${fmtC1(r.totalPengeluaran)}</div><div class="label">Pengeluaran</div></div>
           </div>`;
                     renderReportList(
                         r.data.map((d) => ({
@@ -2084,6 +2090,21 @@
             <input type="number" step="any" id="setKurs" placeholder="280" />
         </div>
         <button class="btn btn-primary btn-block" onclick="saveCurrencySettings()">💾 Simpan Pengaturan Mata Uang</button>
+
+        <div style="border-top:1px solid var(--border);margin:14px 0;padding-top:12px;"></div>
+        <div style="font-weight:600;font-size:12px;margin-bottom:6px;color:var(--primary-light);">
+            Mata Uang Tampilan Global
+        </div>
+        <div class="field">
+            <label>Pilih mata uang untuk seluruh halaman</label>
+            <select id="setDisplayCurrency">
+                <option value="PHP">PHP — Philippine Peso</option>
+            </select>
+        </div>
+        <div id="currencyRateInfo" style="font-size:11px;color:var(--text-mute);margin:4px 0 10px;">
+            Kurs diperbarui otomatis saat data tersedia.
+        </div>
+        <button class="btn btn-outline btn-block" onclick="saveDisplayCurrency()">Terapkan ke Semua Halaman</button>
     </div>
 
     <div class="section-title">Anggaran Harian</div>
@@ -2211,12 +2232,15 @@
                 safeSetVal('setC2Symbol', s.MataUang2_Simbol || 'Rp');
 
                 safeSetVal('setKurs', s.KursKonversi || s.KursABA || 280);
+                safeSetVal('setDisplayCurrency', s.DisplayCurrency || s.MataUang1_Kode || 'PHP');
 
                 setAppCurrency({
                     c1: { code: s.MataUang1_Kode || 'PHP', name: s.MataUang1_Nama || 'Peso', symbol: s.MataUang1_Simbol || '₱' },
                     c2: { code: s.MataUang2_Kode || 'IDR', name: s.MataUang2_Nama || 'Rupiah', symbol: s.MataUang2_Simbol || 'Rp' },
-                    kurs: Number(s.KursKonversi || s.KursABA || 280)
+                    kurs: Number(s.KursKonversi || s.KursABA || 280),
+                    displayCode: s.DisplayCurrency || s.MataUang1_Kode || 'PHP'
                 });
+                loadWorldCurrencyRates(s.DisplayCurrency || s.MataUang1_Kode || 'PHP');
 
                 safeSetVal('setBudgetBulanan', s.BudgetBulanan || 400);
                 safeSetVal('setTargetTabungan', s.TargetTabungan || 100);
@@ -2321,9 +2345,28 @@
         };
 
         callServer('saveCurrencyConfig', [data], (res) => {
-            if (res && res.currency) setAppCurrency(res.currency);
+            if (!res || res.success === false) {
+                Swal.fire('Gagal', (res && res.message) || 'Pengaturan mata uang tidak dapat disimpan.', 'warning');
+                return;
+            }
+            if (res.currency) setAppCurrency(res.currency);
             toastSukses('Pengaturan mata uang & kurs berhasil disimpan!');
             loadSettings();
+        });
+    }
+
+    function saveDisplayCurrency() {
+        const el = document.getElementById('setDisplayCurrency');
+        const code = el ? (el.value || appCurrency.displayCode || 'PHP') : (appCurrency.displayCode || 'PHP');
+        callServer('saveAppSettings', [{ DisplayCurrency: code }], (res) => {
+            if (res && res.success === false) {
+                Swal.fire('Gagal', res.message || 'Mata uang tidak dapat disimpan.', 'warning');
+                return;
+            }
+            appCurrency.displayCode = code;
+            updateCurrencyUIElements();
+            toastSukses('Mata uang tampilan diterapkan ke seluruh halaman.');
+            refreshVisibleCurrencyValues();
         });
     }
 
@@ -2423,35 +2466,107 @@
     let appCurrency = {
         c1: { code: 'PHP', name: 'Peso', symbol: '₱' },
         c2: { code: 'IDR', name: 'Rupiah', symbol: 'Rp' },
-        kurs: 280
+        kurs: 280,
+        displayCode: 'PHP',
+        rates: null,
+        ratesUpdatedAt: ''
     };
 
     function setAppCurrency(cfg) {
         if (!cfg) return;
         if (cfg.c1) appCurrency.c1 = cfg.c1;
         if (cfg.c2) appCurrency.c2 = cfg.c2;
-        if (cfg.kurs) appCurrency.kurs = Number(cfg.kurs) || appCurrency.kurs;
+        if (cfg.kurs && Number(cfg.kurs) > 0) appCurrency.kurs = Number(cfg.kurs);
+        if (cfg.displayCode) appCurrency.displayCode = String(cfg.displayCode).toUpperCase();
+        if (cfg.rates) appCurrency.rates = cfg.rates;
         updateCurrencyUIElements();
     }
 
+    function loadWorldCurrencyRates(preferredCode) {
+        callServer('getWorldCurrencyRates', [], (data) => {
+            if (!data || !data.success || !data.rates) return;
+            appCurrency.rates = data.rates;
+            appCurrency.ratesUpdatedAt = data.updatedAt || '';
+            const select = document.getElementById('setDisplayCurrency');
+            if (select) {
+                const codes = Object.keys(data.rates).sort();
+                select.innerHTML = codes.map((code) => {
+                    let name = code;
+                    try {
+                        if (typeof Intl.DisplayNames === 'function') {
+                            name = new Intl.DisplayNames(['id'], { type: 'currency' }).of(code) || code;
+                        }
+                    } catch (e) {}
+                    return `<option value="${code}">${code} — ${name}</option>`;
+                }).join('');
+                const wanted = String(preferredCode || appCurrency.displayCode || 'PHP').toUpperCase();
+                select.value = data.rates[wanted] ? wanted : 'USD';
+                appCurrency.displayCode = select.value;
+            }
+            const info = document.getElementById('currencyRateInfo');
+            if (info) info.textContent = 'Kurs referensi USD diperbarui: ' + (data.updatedAt || 'waktu tidak tersedia') + '. Nilai asli transaksi tetap aman.';
+            refreshVisibleCurrencyValues();
+        }, (err) => {
+            const info = document.getElementById('currencyRateInfo');
+            if (info) info.textContent = 'Kurs online belum tersedia. Tampilan memakai mata uang asli sampai koneksi pulih.';
+        }, true);
+    }
+
+    function convertToDisplayAmount(amount, fromCode) {
+        const value = Number(amount || 0);
+        const from = String(fromCode || appCurrency.displayCode || 'PHP').toUpperCase();
+        const to = String(appCurrency.displayCode || 'PHP').toUpperCase();
+        if (from === to) return value;
+        const rates = appCurrency.rates;
+        if (!rates || !Number(rates[from]) || !Number(rates[to])) return null;
+        return (value / Number(rates[from])) * Number(rates[to]);
+    }
+
+    function formatFromCurrency(amount, fromCode) {
+        const value = Number(amount || 0);
+        const from = String(fromCode || appCurrency.displayCode || 'PHP').toUpperCase();
+        const to = String(appCurrency.displayCode || 'PHP').toUpperCase();
+        const converted = convertToDisplayAmount(value, from);
+        if (converted === null) {
+            return from + ' ' + value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        }
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: to,
+                currencyDisplay: 'symbol'
+            }).format(converted);
+        } catch (e) {
+            return to + ' ' + converted.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        }
+    }
+
     function fmtC1(val) {
-        const s = (appCurrency.c1 && appCurrency.c1.symbol) || '₱';
-        return s + ' ' + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return formatFromCurrency(val, appCurrency.c1.code);
     }
 
     function fmtC2(val) {
-        const s = (appCurrency.c2 && appCurrency.c2.symbol) || 'Rp';
-        return s + ' ' + Math.round(Number(val || 0)).toLocaleString('id-ID');
+        return formatFromCurrency(val, appCurrency.c2.code);
+    }
+
+    function refreshVisibleCurrencyValues() {
+        const active = document.querySelector('.page.active');
+        if (!active) return;
+        const pageName = (active.id || '').replace(/^page-/, '');
+        // Hindari loop loadSettings -> kurs -> refresh -> loadSettings.
+        if (pageName === 'setting') return;
+        if (typeof onPageShown === 'function' && pageName) onPageShown(pageName);
     }
 
     function updateCurrencyUIElements() {
         const c1 = appCurrency.c1;
         const c2 = appCurrency.c2;
+        const display = appCurrency.displayCode || 'PHP';
 
         const l1 = document.getElementById('labelRingC1');
-        if (l1) l1.textContent = (c1.code === 'PHP' ? '🇵🇭 ' : (c1.code === 'IDR' ? '🇮🇩 ' : '💵 ')) + 'SALDO ' + c1.name.toUpperCase();
+        if (l1) l1.textContent = 'SALDO UTAMA · ' + display;
         const l2 = document.getElementById('labelRingC2');
-        if (l2) l2.textContent = (c2.code === 'IDR' ? '🇮🇩 ' : (c2.code === 'PHP' ? '🇵🇭 ' : '💰 ')) + 'SALDO ' + c2.name.toUpperCase();
+        if (l2) l2.textContent = 'SALDO SEKUNDER · ' + display;
 
         const trxCur = document.getElementById('trxCurrency');
         if (trxCur) {
@@ -2460,24 +2575,23 @@
                 <option value="${c1.code}">${c1.code} (${c1.name} - ${c1.symbol})</option>
                 <option value="${c2.code}">${c2.code} (${c2.name} - ${c2.symbol})</option>
             `;
-            if (curVal === c2.code) trxCur.value = c2.code;
-            else trxCur.value = c1.code;
+            trxCur.value = curVal === c2.code ? c2.code : c1.code;
         }
 
         const lblKurs = document.getElementById('lblKursKonversi');
         if (lblKurs) lblKurs.textContent = 'Nilai Kurs (1 ' + c1.code + ' = ? ' + c2.code + ')';
 
         const lblLdrBiaya = document.getElementById('lblLdrBiaya');
-        if (lblLdrBiaya) lblLdrBiaya.textContent = 'Biaya (' + c2.name + ')';
+        if (lblLdrBiaya) lblLdrBiaya.textContent = 'Biaya (input ' + c2.name + '; tampilan ' + display + ')';
         const lblLdrHarga = document.getElementById('lblLdrHarga');
         if (lblLdrHarga) lblLdrHarga.textContent = 'Harga per Laundry (' + c2.name + ')';
         const lblLdrBudget = document.getElementById('lblLdrBudget');
         if (lblLdrBudget) lblLdrBudget.textContent = 'Budget Bulanan (' + c2.name + ')';
 
         const lblBudget = document.getElementById('lblBudgetBulanan');
-        if (lblBudget) lblBudget.textContent = 'Anggaran Bulanan (' + c1.symbol + ')';
+        if (lblBudget) lblBudget.textContent = 'Anggaran Bulanan (' + c1.code + '; tampilan ' + display + ')';
         const lblTabungan = document.getElementById('lblTargetTabungan');
-        if (lblTabungan) lblTabungan.textContent = 'Target Tabungan (' + c1.symbol + ')';
+        if (lblTabungan) lblTabungan.textContent = 'Target Tabungan (' + c1.code + '; tampilan ' + display + ')';
     }
 
     // ---------------- SUARA PERINGATAN ----------------
@@ -2568,7 +2682,7 @@
         const html = globalWarningItems
             .map(
                 (i) =>
-                    `<div style="text-align:left;margin-bottom:8px;"><b>${i.level === 'bahaya' ? '🔴' : '🟡'} ${i.title}</b><br><span style="font-size:12px;color:var(--text-mute);">${i.detail}</span></div>`
+                    `<div style="text-align:left;margin-bottom:8px;"><b>${i.level === 'bahaya' ? '🔴' : '🟡'} ${i.title}</b><br><span style="font-size:12px;color:var(--text-mute);">${i.detail}${i.amount !== undefined ? ': ' + formatFromCurrency(Number(i.amount), i.currency) : ''}</span></div>`
             )
             .join('');
         Swal.fire({
@@ -2671,6 +2785,7 @@
 
         // Pengaturan
         getAppSettings: [],
+        getWorldCurrencyRates: [],
         saveAppSettings: ['data'],
         updateKursABA: ['kurs'],
         updateKurs: ['kurs'],
@@ -2838,9 +2953,9 @@
             const progress = Math.min((t - startTime) / duration, 1);
             const eased = 1 - Math.pow(1 - progress, 3);
             const val = start + (target - start) * eased;
-            el.textContent =
-                (prefix || '') +
-                val.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+            if (prefix === 'C1') el.textContent = fmtC1(val);
+            else if (prefix === 'C2') el.textContent = fmtC2(val);
+            else el.textContent = (prefix || '') + val.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
             if (progress < 1) requestAnimationFrame(frame);
             else el.dataset.val = target;
         }
@@ -2873,14 +2988,14 @@
         let html = '';
         if (merahGabungan) {
             html +=
-                'Tabungan tidak cukup menutupi Dana Pribadi + Titipan.<br>Kekurangan (gabungan): <b>$' +
-                Number(kekuranganGabungan).toFixed(2) +
+                'Tabungan tidak cukup menutupi Dana Pribadi + Titipan.<br>Kekurangan (gabungan): <b>' +
+                fmtC1(Number(kekuranganGabungan)) +
                 '</b><br><br>';
         }
         if (merahPribadi) {
             html +=
-                'Tabungan tidak cukup menutupi Dana Pribadi saja.<br>Kekurangan (pribadi): <b>$' +
-                Number(kekuranganPribadi).toFixed(2) +
+                'Tabungan tidak cukup menutupi Dana Pribadi saja.<br>Kekurangan (pribadi): <b>' +
+                fmtC1(Number(kekuranganPribadi)) +
                 '</b>';
         }
         Swal.fire({
@@ -2898,8 +3013,8 @@
             icon: 'warning',
             title: '⚠ Limit Harian Terlampaui',
             html:
-                'Pengeluaran hari ini sudah melebihi limit harian.<br>Kelebihan: <b>$' +
-                Number(kelebihan).toFixed(2) +
+                'Pengeluaran hari ini sudah melebihi limit harian.<br>Kelebihan: <b>' +
+                fmtC1(Number(kelebihan)) +
                 '</b>',
             confirmButtonColor: '#C0392B',
             confirmButtonText: 'Mengerti',
@@ -2918,8 +3033,8 @@
             title: '🔴 Budget Laundry Terlampaui',
             html:
                 'Pengeluaran laundry bulan ini sudah melebihi budget sebesar <b>' +
-                Math.round(kelebihan).toLocaleString() +
-                ' Riel</b>.',
+                fmtC2(Number(kelebihan)) +
+                '</b>.',
             confirmButtonColor: '#C0392B',
         });
     }
@@ -2954,6 +3069,18 @@
                 if (name === 'report') initReportPage();
                 if (name === 'setting') loadSettings();
             }
+
+            // Muat preferensi mata uang global sejak aplikasi dibuka (bukan hanya saat halaman Pengaturan dibuka).
+            callServer('getAppSettings', [], (settings) => {
+                settings = settings || {};
+                setAppCurrency({
+                    c1: { code: settings.MataUang1_Kode || 'PHP', name: settings.MataUang1_Nama || 'Peso', symbol: settings.MataUang1_Simbol || '₱' },
+                    c2: { code: settings.MataUang2_Kode || 'IDR', name: settings.MataUang2_Nama || 'Rupiah', symbol: settings.MataUang2_Simbol || 'Rp' },
+                    kurs: Number(settings.KursKonversi || settings.KursABA || 280),
+                    displayCode: settings.DisplayCurrency || settings.MataUang1_Kode || 'PHP'
+                });
+                loadWorldCurrencyRates(settings.DisplayCurrency || settings.MataUang1_Kode || 'PHP');
+            }, null, true);
 
             // Info hari/tanggal & nama perusahaan diambil sekali di awal.
             callServer(
