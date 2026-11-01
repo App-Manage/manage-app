@@ -794,9 +794,83 @@
     .page .card{padding:12px;}
   }
 
-</style>
-    <style>
-.periodic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0}.periodic-card{background:var(--card-bg,#fff);border:1px solid var(--border,#e5e7eb);border-radius:14px;padding:14px}.periodic-card h3{margin:0 0 8px;font-size:14px}.periodic-card .big{font-size:20px;font-weight:700}.periodic-form{display:flex;flex-wrap:wrap;gap:10px;align-items:end}.periodic-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-mute)}.periodic-form input,.periodic-form select{padding:10px;border:1px solid var(--border,#ddd);border-radius:9px;background:var(--input-bg,#fff);color:var(--text,#222)}.periodic-table{width:100%;border-collapse:collapse;font-size:12px}.periodic-table th,.periodic-table td{padding:9px;border-bottom:1px solid var(--border,#eee);text-align:left}.periodic-note{font-size:12px;color:var(--text-mute);line-height:1.6}.periodic-bars{display:grid;grid-template-columns:repeat(12,minmax(22px,1fr));gap:6px;align-items:end;height:150px;margin:16px 0}.periodic-bar{display:flex;flex-direction:column;justify-content:end;align-items:center;height:100%;gap:4px;font-size:10px}.periodic-bar i{display:block;width:100%;max-width:28px;background:#2d8b78;border-radius:5px 5px 0 0;min-height:2px}.periodic-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+  /* ===== HALAMAN PERIODIK: Statistik Tahunan, Tabungan Bulanan, Arsip Bulanan ===== */
+  .pd-year{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface-solid);border:1px solid var(--border);border-radius:14px;padding:6px;margin-bottom:12px;}
+  .pd-year-btn{width:42px;height:42px;border:none;border-radius:10px;background:transparent;color:var(--text);display:grid;place-items:center;cursor:pointer;}
+  .pd-year-btn:active{background:rgba(27,75,67,.1);}
+  .pd-year-label{display:flex;flex-direction:column;align-items:center;line-height:1.15;font-family:var(--font-mono);font-weight:800;font-size:19px;}
+  .pd-year-label small{font-family:var(--font-display);font-size:9.5px;font-weight:600;color:var(--text-mute);}
+  .pd-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px;}
+  .pd-stat{min-width:0;background:var(--surface-solid);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:5px;}
+  .pd-stat-head{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--text-mute);}
+  .pd-stat-head .material-symbols-outlined{font-size:17px;}
+  .pd-stat-value{font-family:var(--font-mono);font-size:clamp(12px,3.9vw,17px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pd-up{color:var(--success);}.pd-down{color:var(--danger);}.pd-save{color:#3988c9;}
+  body[data-theme="dark"] .pd-up{color:#6fd9a7;}body[data-theme="dark"] .pd-down{color:#ff8a7a;}body[data-theme="dark"] .pd-save{color:#7ab8ee;}
+
+  .pd-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+  .pd-card-title{font-size:13px;font-weight:700;}
+  .pd-chart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;height:150px;align-items:end;border-bottom:1px solid var(--border);}
+  .pd-col{height:100%;min-width:0;display:flex;align-items:flex-end;justify-content:center;gap:2px;}
+  .pd-bar{flex:1;max-width:11px;min-height:2px;border-radius:4px 4px 0 0;transition:height .5s ease;}
+  .pd-bar.in{background:linear-gradient(180deg,#35c58a,#08734e);}
+  .pd-bar.out{background:linear-gradient(180deg,#e8918a,#c0392b);}
+  .pd-bar.zero{opacity:.2;}
+  .pd-labels{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;margin-top:6px;text-align:center;font-size:9px;font-weight:600;color:var(--text-mute);}
+  .pd-labels .full{display:none;}
+  @media(min-width:480px){.pd-labels .short{display:none;}.pd-labels .full{display:inline;}}
+  .pd-legend{display:flex;gap:14px;margin-top:11px;font-size:10px;font-weight:600;color:var(--text-mute);}
+  .pd-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
+
+  .pd-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px;}
+  .pd-month{min-width:0;background:var(--surface-solid);border:1px solid var(--border);border-radius:14px;padding:12px;}
+  .pd-month-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+  .pd-month-name{font-weight:700;font-size:13px;}
+  .pd-month-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+  .pd-mini-label{font-size:9px;font-weight:600;color:var(--text-mute);margin-bottom:2px;}
+  .pd-mini-value{font-family:var(--font-mono);font-size:clamp(10px,3vw,12px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pd-month-foot{margin-top:9px;padding-top:8px;border-top:1px solid var(--border);font-size:10px;color:var(--text-mute);}
+
+  .pd-two{display:grid;grid-template-columns:minmax(0,1fr);gap:0;}
+  @media(min-width:760px){.pd-two{grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:16px;align-items:start;}}
+  .pd-progress{height:9px;border-radius:99px;background:var(--border);overflow:hidden;margin:10px 0 6px;}
+  .pd-progress>i{display:block;height:100%;border-radius:99px;background:var(--gradient-primary);transition:width .6s ease;}
+  .pd-progress-meta{display:flex;justify-content:space-between;gap:8px;font-size:10px;font-weight:600;color:var(--text-mute);}
+  .pd-note{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 11px;border-radius:11px;background:rgba(27,75,67,.07);font-size:11px;line-height:1.55;color:var(--text-mute);}
+  .pd-note .material-symbols-outlined{font-size:17px;flex-shrink:0;color:var(--primary-light);}
+  .pd-note.warn{background:rgba(201,162,39,.14);}.pd-note.warn .material-symbols-outlined{color:#a98400;}
+  .pd-actions{display:grid;gap:9px;}
+  .pd-pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:10px;font-weight:700;background:rgba(27,75,67,.1);color:var(--primary);white-space:nowrap;}
+  body[data-theme="dark"] .pd-pill{color:#6fd9a7;}
+  .pd-loading{text-align:center;padding:26px 10px;font-size:12px;color:var(--text-mute);}
+  .pd-archive-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;margin-top:8px;}
+  .pd-archives{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px;}
+  .pd-entry{align-items:center;}
+  .pd-entry .title{font-family:var(--font-mono);}
+  .pd-entry .sub{white-space:normal;overflow-wrap:anywhere;}
+
+  /* ===== BOTTOM NAV: bisa digeser, label tidak saling menimpa ===== */
+  .bottomnav{justify-content:flex-start;gap:2px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;scroll-snap-type:x proximity;}
+  .bottomnav::-webkit-scrollbar{display:none;}
+  .bottomnav .navitem{flex:1 0 auto;min-width:62px;padding:7px 6px;font-size:9.5px;line-height:1.2;text-align:center;white-space:nowrap;scroll-snap-align:center;}
+  .bottomnav .navitem:first-child,.bottomnav .navitem:last-child{margin:0;}
+  @media(max-width:380px){.bottomnav .navitem{min-width:58px;font-size:9px;}}
+
+
+  /* ===== TAB (Arsip | Laporan), KARTU TOTAL TABUNGAN ===== */
+  .pd-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;margin-bottom:12px;background:var(--surface-solid);border:1px solid var(--border);border-radius:14px;}
+  .pd-tabs button{display:flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:11px;padding:10px 8px;font-family:var(--font-display);font-size:12px;font-weight:700;background:transparent;color:var(--text-mute);cursor:pointer;}
+  .pd-tabs button .material-symbols-outlined{font-size:18px;}
+  .pd-tabs button.active{background:var(--gradient-primary);color:#fff;box-shadow:0 4px 12px rgba(27,75,67,.25);}
+  .pd-total{border-radius:18px;padding:18px;margin-bottom:12px;color:#fff;background:var(--gradient-primary);box-shadow:0 8px 20px rgba(27,75,67,.25);}
+  .pd-total-label{font-size:10px;font-weight:700;letter-spacing:.08em;opacity:.8;}
+  .pd-total-value{font-family:var(--font-mono);font-size:clamp(22px,8vw,32px);font-weight:800;margin:6px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pd-total-sub{font-size:11px;opacity:.85;}
+  .pd-stack{display:grid;gap:9px;}
+  .pd-month-note{margin-top:8px;font-size:10px;color:var(--text-mute);}
+  .pd-field-hint{font-size:10px;color:var(--text-mute);margin-top:4px;}
+
 </style>
 </head>
     <body data-theme="light">
@@ -2100,138 +2174,137 @@
                 </script>
 
                 <div class="page" id="page-report">
-                    <div class="chips">
-                        <div class="chip active" data-t="absensi" onclick="setReportType('absensi')">📋 Absensi</div>
-                        <div class="chip" data-t="keuangan" onclick="setReportType('keuangan')">💰 Keuangan</div>
-                    </div>
+  <div class="dash-intro">
+    <div>
+      <div class="dash-kicker">LAPORAN</div>
+      <div class="dash-heading">Laporan</div>
+      <div class="dash-subtitle">Termasuk bulan yang sudah diarsipkan</div>
+    </div>
+    <div class="dash-intro-icon"><span class="material-symbols-outlined">bar_chart</span></div>
+  </div>
 
-                    <div class="chips">
-                        <div class="chip active" data-p="bulan" onclick="setReportPeriode('bulan')">Bulan</div>
-                        <div class="chip" data-p="hari" onclick="setReportPeriode('hari')">Hari</div>
-                        <div class="chip" data-p="minggu" onclick="setReportPeriode('minggu')">Minggu</div>
-                        <div class="chip" data-p="tahun" onclick="setReportPeriode('tahun')">Tahun</div>
-                    </div>
+  <div class="pd-tabs">
+    <button type="button" onclick="goPage('archives')"><span class="material-symbols-outlined">inventory_2</span>Arsip Bulanan</button>
+    <button type="button" class="active" onclick="goPage('report')"><span class="material-symbols-outlined">bar_chart</span>Laporan</button>
+  </div>
 
-                    <div class="card" id="reportSummaryCard"></div>
+  <div class="chips">
+    <div class="chip active" data-t="absensi" onclick="setReportType('absensi')">📋 Absensi</div>
+    <div class="chip" data-t="keuangan" onclick="setReportType('keuangan')">💰 Keuangan</div>
+  </div>
 
-                    <div class="grid-2" style="margin-bottom: 12px">
-                        <button class="btn btn-gold" onclick="doExport('pdf')">
-                            <span class="material-symbols-outlined" style="font-size: 16px">picture_as_pdf</span> PDF
-                        </button>
-                        <button class="btn btn-outline" onclick="doExport('excel')">
-                            <span class="material-symbols-outlined" style="font-size: 16px">grid_on</span> Excel
-                        </button>
-                    </div>
+  <div class="chips">
+    <div class="chip active" data-p="bulan" onclick="setReportPeriode('bulan')">Bulan</div>
+    <div class="chip" data-p="hari" onclick="setReportPeriode('hari')">Hari</div>
+    <div class="chip" data-p="minggu" onclick="setReportPeriode('minggu')">Minggu</div>
+    <div class="chip" data-p="tahun" onclick="setReportPeriode('tahun')">Tahun</div>
+  </div>
 
-                    <div id="reportList"></div>
-                </div>
+  <div class="field">
+    <label for="reportMonth">Atau pilih bulan tertentu</label>
+    <input type="month" id="reportMonth" onchange="setReportMonth()">
+  </div>
 
-                <script>
-                    let reportType = 'absensi';
-                    let reportPeriode = 'bulan';
+  <div class="card" id="reportSummaryCard"></div>
 
-                    function initReportPage() {
-                        loadReport();
-                    }
+  <div class="grid-2" style="margin-bottom:12px;">
+    <button class="btn btn-gold" onclick="doExport('pdf')"><span class="material-symbols-outlined" style="font-size:16px;">picture_as_pdf</span> PDF</button>
+    <button class="btn btn-outline" onclick="doExport('excel')"><span class="material-symbols-outlined" style="font-size:16px;">grid_on</span> Excel</button>
+  </div>
 
-                    function setReportType(t) {
-                        reportType = t;
-                        document
-                            .querySelectorAll('#page-report .chips')[0]
-                            .querySelectorAll('.chip')
-                            .forEach((c) => c.classList.toggle('active', c.dataset.t === t));
-                        loadReport();
-                    }
-                    function setReportPeriode(p) {
-                        reportPeriode = p;
-                        document
-                            .querySelectorAll('#page-report .chips')[1]
-                            .querySelectorAll('.chip')
-                            .forEach((c) => c.classList.toggle('active', c.dataset.p === p));
-                        loadReport();
-                    }
+  <div id="reportList"></div>
+</div>
 
-                    function loadReport() {
-                        if (reportType === 'absensi') {
-                            callServer(
-                                'getAttendanceReport',
-                                [reportPeriode],
-                                (r) => {
-                                    document.getElementById('reportSummaryCard').innerHTML = `
+<script>
+  let reportType = 'absensi';
+  let reportPeriode = 'bulan';
+  let reportMonth = '';
+
+  function initReportPage() { loadReport(); }
+
+  function setReportType(t) {
+    reportType = t;
+    document.querySelectorAll('#page-report .chips')[0].querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.t === t));
+    loadReport();
+  }
+  function markPeriodeChips_(p) {
+    document.querySelectorAll('#page-report .chips')[1].querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.p === p));
+  }
+  function setReportPeriode(p) {
+    reportPeriode = p;
+    reportMonth = '';
+    document.getElementById('reportMonth').value = '';
+    markPeriodeChips_(p);
+    loadReport();
+  }
+  function setReportMonth() {
+    reportMonth = document.getElementById('reportMonth').value || '';
+    markPeriodeChips_(reportMonth ? '' : reportPeriode);
+    loadReport();
+  }
+  /** Argumen periode untuk server: bulan tertentu dikirim sebagai rentang custom. */
+  function reportArgs_() {
+    if (!reportMonth) return [reportPeriode];
+    const p = reportMonth.split('-').map(Number);
+    const last = new Date(p[0], p[1], 0).getDate();
+    return ['custom', reportMonth + '-01', reportMonth + '-' + String(last).padStart(2, '0')];
+  }
+
+  function loadReport() {
+    if (reportType === 'absensi') {
+      callServer('getAttendanceReport', reportArgs_(), (r) => {
+        document.getElementById('reportSummaryCard').innerHTML = `
           <div class="grid-3">
             <div class="stat-mini"><div class="num">${r.summary.Hadir}</div><div class="label">Hadir</div></div>
             <div class="stat-mini"><div class="num">${r.summary.Terlambat}</div><div class="label">Terlambat</div></div>
             <div class="stat-mini"><div class="num">${r.summary.Izin + r.summary.Sakit}</div><div class="label">Izin/Sakit</div></div>
           </div>`;
-                                    renderReportList(
-                                        r.data.map((d) => ({
-                                            title: d.Nama,
-                                            sub: d.Tanggal + ' · ' + d.Status,
-                                            right: d.LamaKerja || '',
-                                        }))
-                                    );
-                                },
-                                null,
-                                true
-                            );
-                        } else {
-                            callServer(
-                                'getFinanceReport',
-                                [reportPeriode],
-                                (r) => {
-                                    document.getElementById('reportSummaryCard').innerHTML = `
+        renderReportList(r.data.map(d => ({ title: d.Nama, sub: d.Tanggal + ' · ' + d.Status, right: d.LamaKerja || '' })));
+      }, null, true);
+    } else {
+      callServer('getFinanceReport', reportArgs_(), (r) => {
+        const bal = Number(r.balance || 0);
+        const info = r.totalTransaksi + ' transaksi' + (r.jumlahTitipan ? ' · ' + r.jumlahTitipan + ' transaksi Dana Titipan tidak dihitung' : '');
+        document.getElementById('reportSummaryCard').innerHTML = `
           <div class="grid-3">
-            <div class="stat-mini"><div class="num">${r.totalTransaksi}</div><div class="label">Transaksi</div></div>
             <div class="stat-mini"><div class="num">${fmtRp(r.totalPemasukan)}</div><div class="label">Pemasukan</div></div>
-            <div class="stat-mini"><div class="num">${fmtRp(r.totalPengeluaran)}</div><div class="label">Pengeluaran</div></div>
-          </div>`;
-                                    renderReportList(
-                                        r.data.map((d) => ({
-                                            title: d.PemilikDana + ' · ' + d.Kategori,
-                                            sub: d.NomorTransaksi,
-                                            right: (d.Nominal > 0 ? '+' : '') + fmtByCode(d.Nominal, d.MataUang),
-                                        }))
-                                    );
-                                },
-                                null,
-                                true
-                            );
-                        }
-                    }
+            <div class="stat-mini"><div class="num">${fmtRp(Math.abs(r.totalPengeluaran))}</div><div class="label">Pengeluaran</div></div>
+            <div class="stat-mini"><div class="num">${bal < 0 ? '-' : ''}${fmtRp(Math.abs(bal))}</div><div class="label">Balance</div></div>
+          </div>
+          <div class="pd-month-note" style="text-align:center">${esc(info)}</div>`;
+        renderReportList(r.data.map(d => ({ title: d.PemilikDana + ' · ' + d.Kategori, sub: d.NomorTransaksi, right: (d.Nominal > 0 ? '+' : '') + fmtByCode(d.Nominal, d.MataUang) })));
+      }, null, true);
+    }
+  }
 
-                    function renderReportList(items) {
-                        const container = document.getElementById('reportList');
-                        if (!items.length) {
-                            container.innerHTML =
-                                '<div class="empty-state"><span class="material-symbols-outlined">description</span><div>Tidak ada data pada periode ini</div></div>';
-                            return;
-                        }
-                        container.innerHTML = items
-                            .map(
-                                (i) => `
+  function renderReportList(items) {
+    const container = document.getElementById('reportList');
+    if (!items.length) {
+      container.innerHTML = '<div class="empty-state"><span class="material-symbols-outlined">description</span><div>Tidak ada data pada periode ini</div></div>';
+      return;
+    }
+    container.innerHTML = items.map(i => `
       <div class="list-item">
         <div class="main"><div class="title">${esc(i.title)}</div><div class="sub">${esc(i.sub)}</div></div>
         <span class="badge badge-mute">${esc(i.right)}</span>
       </div>
-    `
-                            )
-                            .join('');
-                    }
+    `).join('');
+  }
 
-                    function doExport(format) {
-                        const fn = format === 'pdf' ? 'exportReportToPDF' : 'exportReportToExcel';
-                        callServer(fn, [reportType, reportPeriode], (res) => {
-                            if (res.success) {
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Ekspor Berhasil',
-                                    html: `<a href="${esc(res.url)}" target="_blank" rel="noopener">Buka file hasil ekspor</a>`,
-                                    confirmButtonColor: '#1B4B43',
-                                });
-                            }
-                        });
-                    }
-                </script>
+  function doExport(format) {
+    const fn = format === 'pdf' ? 'exportReportToPDF' : 'exportReportToExcel';
+    callServer(fn, [reportType].concat(reportArgs_()), (res) => {
+      if (res.success) {
+        Swal.fire({
+          icon: 'success', title: 'Ekspor Berhasil',
+          html: `<a href="${esc(res.url)}" target="_blank" rel="noopener">Buka file hasil ekspor</a>`,
+          confirmButtonColor: '#1B4B43'
+        });
+      }
+    });
+  }
+</script>
+
 
                 <div class="page" id="page-setting">
                     <div class="section-title">Profil Perusahaan</div>
@@ -2554,25 +2627,135 @@
                         });
                     }
                 </script>
+            <div class="page" id="page-savings">
+  <div class="dash-intro">
+    <div>
+      <div class="dash-kicker">TABUNGAN</div>
+      <div class="dash-heading">Tabungan Bulanan</div>
+      <div class="dash-subtitle">Pencatatan manual, terpisah dari saldo kas utama</div>
+    </div>
+    <div class="dash-intro-icon"><span class="material-symbols-outlined">savings</span></div>
+  </div>
+
+  <div class="pd-two">
+    <div>
+      <div class="pd-total">
+        <div class="pd-total-label">TOTAL TERTABUNG</div>
+        <div class="pd-total-value" id="savingTotal">Rp0</div>
+        <div class="pd-total-sub" id="savingTotalSub">Memuat…</div>
+      </div>
+      <div class="pd-stats">
+        <div class="pd-stat"><div class="pd-stat-head"><span class="material-symbols-outlined">calendar_month</span><span id="savingYearLabel">Tahun ini</span></div><div class="pd-stat-value pd-save" id="savingYear">Rp0</div></div>
+        <div class="pd-stat"><div class="pd-stat-head"><span class="material-symbols-outlined">today</span>Bulan ini</div><div class="pd-stat-value pd-save" id="savingMonth">Rp0</div></div>
+      </div>
+
+      <div class="section-title">Catat tabungan</div>
+      <div class="card">
+        <div class="field">
+          <label for="savingPeriod">Periode</label>
+          <input type="month" id="savingPeriod" onchange="loadSavingEntries()">
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="savingTarget">Target (Rp)</label>
+            <input type="number" inputmode="numeric" id="savingTarget" min="0" placeholder="1500000">
+          </div>
+          <div class="field">
+            <label for="savingAmount">Nominal (Rp)</label>
+            <input type="number" inputmode="numeric" id="savingAmount" min="1" placeholder="500000">
+          </div>
+        </div>
+        <div class="field">
+          <label for="savingNote">Catatan (opsional)</label>
+          <input type="text" id="savingNote" placeholder="cth: sisa gaji bulan ini">
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="savingSubmit" onclick="submitMonthlySavings()">
+          <span class="material-symbols-outlined" style="font-size:18px">add_circle</span>Simpan Tabungan
+        </button>
+        <div class="pd-note">
+          <span class="material-symbols-outlined">info</span>
+          <span>Tabungan hanya bertambah dan tidak membuat transaksi. Saldo Rupiah/Peso tidak berubah, dan catatan tidak ikut terhapus saat arsip bulanan.</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Rekap per bulan</div>
+      <div id="savingMonths"><div class="pd-loading">Memuat rekap…</div></div>
+      <div class="section-title" id="savingTitle">Catatan bulan ini</div>
+      <div id="savingTable"></div>
+    </div>
+  </div>
+</div>
+
+<div class="page" id="page-archives">
+  <div class="dash-intro">
+    <div>
+      <div class="dash-kicker">ARSIP</div>
+      <div class="dash-heading">Arsip Bulanan</div>
+      <div class="dash-subtitle">Pemasukan, pengeluaran, dan balance tiap bulan</div>
+    </div>
+    <div class="dash-intro-icon"><span class="material-symbols-outlined">inventory_2</span></div>
+  </div>
+
+  <div class="pd-tabs">
+    <button type="button" class="active" onclick="goPage('archives')"><span class="material-symbols-outlined">inventory_2</span>Arsip Bulanan</button>
+    <button type="button" onclick="goPage('report')"><span class="material-symbols-outlined">bar_chart</span>Laporan</button>
+  </div>
+
+  <div class="pd-year">
+    <button type="button" class="pd-year-btn" onclick="pdShiftYear(-1)" aria-label="Tahun sebelumnya"><span class="material-symbols-outlined">chevron_left</span></button>
+    <div class="pd-year-label"><span id="annualYearLabel">2026</span><small>Tahun</small></div>
+    <button type="button" class="pd-year-btn" onclick="pdShiftYear(1)" aria-label="Tahun berikutnya"><span class="material-symbols-outlined">chevron_right</span></button>
+  </div>
+
+  <div class="pd-stats" id="annualCards"><div class="pd-loading" style="grid-column:1/-1">Memuat data…</div></div>
+
+  <div class="card">
+    <div class="pd-card-head">
+      <div class="pd-card-title">Pemasukan &amp; pengeluaran per bulan</div>
+      <span class="pd-pill" id="annualCount">0 transaksi</span>
+    </div>
+    <div class="pd-chart" id="annualBars"></div>
+    <div class="pd-labels" id="annualLabels"></div>
+    <div class="pd-legend">
+      <span><i class="pd-dot" style="background:#10a66b"></i>Pemasukan</span>
+      <span><i class="pd-dot" style="background:#c0392b"></i>Pengeluaran</span>
+    </div>
+    <div class="pd-note">
+      <span class="material-symbols-outlined">info</span>
+      <span>Balance = pemasukan − pengeluaran. Dana Titipan tidak ikut dihitung.</span>
+    </div>
+  </div>
+
+  <div class="section-title">Rincian per bulan</div>
+  <div id="annualTable"></div>
+
+  <div class="section-title">Tutup bulan</div>
+  <div class="card">
+    <div class="field">
+      <label for="archivePeriod">Pilih bulan yang sudah selesai</label>
+      <input type="month" id="archivePeriod">
+    </div>
+    <div class="pd-actions">
+      <button type="button" class="btn btn-primary btn-block" id="archiveSubmit" onclick="runMonthlyArchive()">
+        <span class="material-symbols-outlined" style="font-size:18px">inventory_2</span>Arsipkan Bulan
+      </button>
+      <button type="button" class="btn btn-outline btn-block" onclick="enableAutoMonthlyArchive()">
+        <span class="material-symbols-outlined" style="font-size:18px">schedule</span>Aktifkan Arsip Otomatis
+      </button>
+    </div>
+    <div class="pd-note">
+      <span class="material-symbols-outlined">info</span>
+      <span>Transaksi dan laundry bulan itu dipindah ke arsip supaya bulan baru mulai bersih. Ringkasan tersimpan, saldo pemilik dana tetap utuh, dan aman dijalankan ulang. Arsip otomatis berjalan tiap tanggal 1.</span>
+    </div>
+  </div>
+</div>
+
             </div>
 
 
-<section class="page" id="page-annual">
- <div class="page-header"><div><h2>Statistik Tahunan</h2><p>Rekap transaksi dan tabungan per bulan</p></div></div>
- <div class="periodic-form"><label>Tahun<input type="number" id="annualYear" min="2000" max="2100"></label><button class="btn btn-primary" onclick="loadAnnualStats()">Tampilkan</button></div>
- <div class="periodic-grid" id="annualCards"></div><div class="periodic-card"><h3>Grafik pemasukan per bulan</h3><div class="periodic-bars" id="annualBars"></div></div>
- <div class="periodic-card" style="margin-top:12px;overflow:auto"><h3>Rincian Januari–Desember</h3><div id="annualTable"></div></div>
-</section>
-<section class="page" id="page-savings">
- <div class="page-header"><div><h2>Tabungan Bulanan</h2><p>Pencatatan manual, terpisah dari saldo kas utama</p></div></div>
- <div class="periodic-card"><h3>Catat tabungan</h3><div class="periodic-form"><label>Periode<input type="month" id="savingPeriod"></label><label>Target (Rp)<input type="number" id="savingTarget" min="0" placeholder="Contoh: 1500000"></label><label>Nominal tabungan (Rp)<input type="number" id="savingAmount" min="0" placeholder="Contoh: 500000"></label><label>Catatan<input type="text" id="savingNote" placeholder="Opsional"></label><button class="btn btn-primary" onclick="submitMonthlySavings()">Simpan</button></div><p class="periodic-note">Penting: catatan ini hanya untuk laporan tabungan. Tidak membuat transaksi dan tidak mengubah saldo Rupiah/Peso.</p></div>
- <div class="periodic-grid" id="savingCards"></div><div class="periodic-card" style="overflow:auto"><h3>Riwayat pencatatan bulan ini</h3><div id="savingTable"></div></div>
-</section>
-<section class="page" id="page-archives">
- <div class="page-header"><div><h2>Arsip & Tutup Bulan</h2><p>Arsipkan transaksi dan catatan laundry tanpa mengubah saldo berjalan</p></div></div>
- <div class="periodic-card"><h3>Arsipkan periode</h3><div class="periodic-form"><label>Pilih bulan<input type="month" id="archivePeriod"></label><button class="btn btn-primary" onclick="runMonthlyArchive()">Arsipkan Bulan</button><button class="btn btn-secondary" onclick="enableAutoMonthlyArchive()">Aktifkan Arsip Otomatis</button></div><p class="periodic-note">Semua transaksi dan catatan laundry pada bulan yang dipilih akan dipindahkan ke arsip. Ringkasan bulan disimpan. Saldo pemilik dana tetap utuh. Proses dapat dijalankan ulang dengan aman tanpa menggandakan arsip.</p></div>
- <div class="periodic-card" style="margin-top:12px;overflow:auto"><h3>Riwayat arsip bulanan</h3><div id="archiveTable"></div></div>
-</section>
+
 
             <div class="bottomnav">
                 <div class="navitem active" id="nav-dashboard" onclick="goPage('dashboard')">
@@ -2587,12 +2770,8 @@
                 <div class="navitem" id="nav-owner" onclick="goPage('owner')">
                     <span class="material-symbols-outlined">account_balance_wallet</span>Dana
                 </div>
-                <div class="navitem" id="nav-annual" onclick="goPage('annual')"><span class="material-symbols-outlined">query_stats</span>Statistik Tahunan</div>
-                <div class="navitem" id="nav-savings" onclick="goPage('savings')"><span class="material-symbols-outlined">savings</span>Tabungan Bulanan</div>
-                <div class="navitem" id="nav-archives" onclick="goPage('archives')"><span class="material-symbols-outlined">inventory_2</span>Arsip Bulanan</div>
-                <div class="navitem" id="nav-report" onclick="goPage('report')">
-                    <span class="material-symbols-outlined">bar_chart</span>Laporan
-                </div>
+                <div class="navitem" id="nav-savings" onclick="goPage('savings')"><span class="material-symbols-outlined">savings</span>Tabungan</div>
+                <div class="navitem" id="nav-archives" onclick="goPage('archives')"><span class="material-symbols-outlined">inventory_2</span>Arsip</div>
                 <div class="navitem" id="nav-setting" onclick="goPage('setting')">
                     <span class="material-symbols-outlined">settings</span>Pengaturan
                 </div>
@@ -2754,9 +2933,14 @@
                 document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
                 document.querySelectorAll('.navitem').forEach((n) => n.classList.remove('active'));
                 const page = document.getElementById('page-' + name);
-                const nav = document.getElementById('nav-' + name);
+                const nav = document.getElementById('nav-' + (name === 'report' ? 'archives' : name)); // Laporan ada di dalam Arsip
                 if (page) page.classList.add('active');
                 if (nav) nav.classList.add('active');
+                const kontenEl = document.getElementById('content'); if (kontenEl) kontenEl.scrollTop = 0;
+                const barEl = document.querySelector('.bottomnav');
+                if (nav && barEl && barEl.scrollWidth > barEl.clientWidth) {
+                  barEl.scrollTo({ left: nav.offsetLeft - (barEl.clientWidth - nav.offsetWidth) / 2, behavior: 'smooth' });
+                }
                 if (typeof onPageShown === 'function') onPageShown(name);
             }
 
@@ -2834,6 +3018,7 @@
                 getAnnualStatistics: ['tahun'],
                 saveMonthlySavings: ['data'],
                 getMonthlySavings: ['periode'],
+                getSavingsOverview: [],
                 getMonthlyArchives: [],
                 installMonthlyArchiveTrigger: [],
 
@@ -3299,14 +3484,142 @@
 
         <script>
 
-function periodicError(msg){Swal.fire({icon:'error',title:'Perhatian',text:String(msg||'Terjadi kesalahan')});}
-(function(){const now=new Date(),ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');['annualYear'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=now.getFullYear()});['savingPeriod','archivePeriod'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=ym});})();
-function loadAnnualStats(){const y=document.getElementById('annualYear').value;callServer('getAnnualStatistics',[y],d=>{const money=v=>fmtRp(v);document.getElementById('annualCards').innerHTML=[['Total Pemasukan',money(d.totalIncome)],['Total Pengeluaran',money(Math.abs(d.totalExpense))],['Total Tabungan Manual',money(d.totalSavings)],['Jumlah Transaksi',Number(d.transactionCount).toLocaleString('id-ID')]].map(x=>`<div class="periodic-card"><h3>${x[0]}</h3><div class="big">${x[1]}</div></div>`).join('');const max=Math.max(1,...d.months.map(m=>m.income));document.getElementById('annualBars').innerHTML=d.months.map(m=>`<div class="periodic-bar"><i style="height:${Math.max(2,m.income/max*110)}px"></i><span>${m.label}</span></div>`).join('');document.getElementById('annualTable').innerHTML=`<table class="periodic-table"><thead><tr><th>Bulan</th><th>Pemasukan</th><th>Pengeluaran</th><th>Selisih</th><th>Tabungan</th><th>Transaksi</th></tr></thead><tbody>${d.months.map(m=>`<tr><td>${m.label}</td><td>${money(m.income)}</td><td>${money(Math.abs(m.expense))}</td><td>${money(m.net)}</td><td>${money(m.savings)}</td><td>${m.count}</td></tr>`).join('')}</tbody></table>`;},null);}
-function loadMonthlySavings(){const p=document.getElementById('savingPeriod').value;callServer('getMonthlySavings',[p],rows=>{const total=rows.reduce((s,r)=>s+Number(r.nominal||0),0),target=rows.reduce((s,r)=>s+Number(r.target||0),0);document.getElementById('savingCards').innerHTML=[['Total tabungan tercatat',fmtRp(total)],['Total target',fmtRp(target)],['Pencatatan',rows.length+' kali']].map(x=>`<div class="periodic-card"><h3>${x[0]}</h3><div class="big">${x[1]}</div></div>`).join('');document.getElementById('savingTable').innerHTML=rows.length?`<table class="periodic-table"><tr><th>Tanggal</th><th>Target</th><th>Nominal</th><th>Catatan</th></tr>${rows.map(r=>`<tr><td>${esc(r.tanggal)}</td><td>${fmtRp(r.target)}</td><td>${fmtRp(r.nominal)}</td><td>${esc(r.catatan)}</td></tr>`).join('')}</table>`:'<p class="periodic-note">Belum ada catatan untuk bulan ini.</p>';},null);}
-function submitMonthlySavings(){const data={periode:document.getElementById('savingPeriod').value,target:document.getElementById('savingTarget').value,nominal:document.getElementById('savingAmount').value,catatan:document.getElementById('savingNote').value};if(!data.periode||data.nominal===''){periodicError('Lengkapi periode dan nominal tabungan.');return;}callServer('saveMonthlySavings',[data],r=>{if(r.success){toastSukses(r.info);document.getElementById('savingAmount').value='';document.getElementById('savingNote').value='';loadMonthlySavings();}else periodicError(r.message||'Gagal menyimpan');},null);}
-function runMonthlyArchive(){const p=document.getElementById('archivePeriod').value;if(!p){periodicError('Pilih periode terlebih dahulu.');return;}Swal.fire({icon:'warning',title:'Arsipkan '+p+'?',text:'Transaksi dan laundry bulan ini akan dipindahkan ke arsip. Saldo berjalan tidak berubah.',showCancelButton:true,confirmButtonText:'Ya, arsipkan',cancelButtonText:'Batal'}).then(x=>{if(!x.isConfirmed)return;callServer('closeMonthlyPeriod',[p],r=>{if(r.success){Swal.fire('Berhasil',r.message+' Transaksi: '+r.arsipTransaksi+', laundry: '+r.arsipLaundry+'.','success');loadMonthlyArchives();}else periodicError(r.message||'Gagal mengarsipkan');},null);});}
-function enableAutoMonthlyArchive(){callServer('installMonthlyArchiveTrigger',[],r=>Swal.fire('Pengaturan otomatis',r.message||'Trigger aktif.','success'),null);}
-function loadMonthlyArchives(){callServer('getMonthlyArchives',[],rows=>{document.getElementById('archiveTable').innerHTML=rows.length?`<table class="periodic-table"><tr><th>Periode</th><th>Transaksi</th><th>Pemasukan</th><th>Pengeluaran</th><th>Laundry</th><th>Berat (Kg)</th></tr>${rows.map(r=>`<tr><td>${esc(r.periode)}</td><td>${r.jumlahTransaksi}</td><td>${fmtRp(r.pemasukan)}</td><td>${fmtRp(Math.abs(r.pengeluaran))}</td><td>${r.jumlahLaundry}</td><td>${r.beratLaundry}</td></tr>`).join('')}</table>`:'<p class="periodic-note">Belum ada arsip bulanan.</p>';},null);}
+/* ===== HALAMAN PERIODIK (Arsip Bulanan, Tabungan Bulanan) ===== */
+const PD_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const PD_BULAN_3 = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+let pdYear = new Date().getFullYear();
+
+function periodicError(msg){ Swal.fire({icon:'error',title:'Perhatian',text:String(msg||'Terjadi kesalahan'),confirmButtonColor:'#1B4B43'}); }
+function pdKey(y,m){ return y+'-'+String(m).padStart(2,'0'); }
+function pdCurrentKey(){ const n=new Date(); return pdKey(n.getFullYear(),n.getMonth()+1); }
+function pdPrevKey(){ const n=new Date(); return n.getMonth()===0 ? pdKey(n.getFullYear()-1,12) : pdKey(n.getFullYear(),n.getMonth()); }
+function pdLabel(key){ const m=String(key||'').match(/^(\d{4})-(\d{2})/); return m ? PD_BULAN[Number(m[2])-1]+' '+m[1] : esc(key||'-'); }
+function pdSigned(n){ n=Number(n||0); return (n<0?'-':'+')+fmtRp(Math.abs(n)); }
+function pdEmpty(icon,text){ return '<div class="empty-state"><span class="material-symbols-outlined">'+icon+'</span><div style="font-size:12px;margin-top:4px">'+text+'</div></div>'; }
+function pdStat(icon,label,value,cls){ return '<div class="pd-stat"><div class="pd-stat-head"><span class="material-symbols-outlined '+cls+'">'+icon+'</span>'+label+'</div><div class="pd-stat-value '+cls+'">'+value+'</div></div>'; }
+
+function pdInit(){
+  const sp=document.getElementById('savingPeriod'); if(sp && !sp.value) sp.value=pdCurrentKey();
+  const ap=document.getElementById('archivePeriod'); const prev=pdPrevKey();
+  if(ap){ ap.max=prev; if(!ap.value || ap.value>prev) ap.value=prev; }
+  document.getElementById('annualYearLabel').textContent=pdYear;
+}
+
+/* ---------- ARSIP BULANAN: pemasukan, pengeluaran, balance per bulan ---------- */
+function pdShiftYear(d){ pdYear+=d; loadMonthlyArchives(); }
+
+function loadMonthlyArchives(){
+  document.getElementById('annualYearLabel').textContent=pdYear;
+  callServer('getAnnualStatistics',[String(pdYear)],d=>{
+    if(!d || !d.months){ periodicError((d && d.message) || 'Data tidak tersedia'); return; }
+    const income=Number(d.totalIncome||0), expense=Math.abs(Number(d.totalExpense||0)), bal=income-expense;
+    document.getElementById('annualCards').innerHTML=
+      pdStat('trending_up','Pemasukan',fmtRp(income),'pd-up')+
+      pdStat('trending_down','Pengeluaran',fmtRp(expense),'pd-down')+
+      pdStat('account_balance','Balance',(bal<0?'-':'')+fmtRp(Math.abs(bal)),bal<0?'pd-down':'pd-up')+
+      pdStat('inventory_2','Bulan terarsip',Number(d.archivedCount||0)+' bulan','');
+    document.getElementById('annualCount').textContent=Number(d.transactionCount||0).toLocaleString('id-ID')+' transaksi';
+
+    const max=Math.max(1,...d.months.map(m=>Math.max(Number(m.income||0),Math.abs(Number(m.expense||0)))));
+    document.getElementById('annualBars').innerHTML=d.months.map(m=>{
+      const i=Number(m.income||0), o=Math.abs(Number(m.expense||0));
+      const tip=PD_BULAN[m.month-1]+' · Masuk '+fmtRp(i)+' · Keluar '+fmtRp(o);
+      return '<div class="pd-col" title="'+esc(tip)+'">'+
+        '<div class="pd-bar in'+(i?'':' zero')+'" style="height:'+(i/max*100)+'%"></div>'+
+        '<div class="pd-bar out'+(o?'':' zero')+'" style="height:'+(o/max*100)+'%"></div></div>';
+    }).join('');
+    document.getElementById('annualLabels').innerHTML=d.months.map(m=>
+      '<span><span class="short">'+PD_BULAN_3[m.month-1][0]+'</span><span class="full">'+PD_BULAN_3[m.month-1]+'</span></span>').join('');
+
+    const aktif=d.months.filter(m=>m.count>0 || m.archived).reverse(); // bulan terbaru di atas
+    document.getElementById('annualTable').innerHTML=aktif.length
+      ? '<div class="pd-months">'+aktif.map(m=>{
+          const inc=Number(m.income||0), exp=Math.abs(Number(m.expense||0)), b=inc-exp;
+          const status=m.archived ? '<span class="pd-pill">Terarsip</span>'
+            : (pdKey(pdYear,m.month)===d.currentKey ? '<span class="badge badge-mute">Berjalan</span>' : '<span class="badge badge-mute">Belum diarsipkan</span>');
+          return '<div class="pd-month"><div class="pd-month-top"><span class="pd-month-name">'+PD_BULAN[m.month-1]+'</span>'+status+'</div>'+
+            '<div class="pd-month-grid">'+
+              '<div><div class="pd-mini-label">Pemasukan</div><div class="pd-mini-value pd-up">'+fmtRp(inc)+'</div></div>'+
+              '<div><div class="pd-mini-label">Pengeluaran</div><div class="pd-mini-value pd-down">'+fmtRp(exp)+'</div></div>'+
+              '<div><div class="pd-mini-label">Balance</div><div class="pd-mini-value '+(b<0?'pd-down':'pd-up')+'">'+pdSigned(b)+'</div></div>'+
+            '</div><div class="pd-month-foot">'+Number(m.count||0)+' transaksi</div></div>';
+        }).join('')+'</div>'
+      : pdEmpty('inventory_2','Belum ada data untuk tahun '+pdYear);
+  },null);
+}
+
+function runMonthlyArchive(){
+  const p=document.getElementById('archivePeriod').value;
+  if(!p){ periodicError('Pilih periode terlebih dahulu.'); return; }
+  if(p>=pdCurrentKey()){ periodicError('Bulan yang masih berjalan belum bisa diarsipkan. Pilih bulan yang sudah selesai.'); return; }
+  Swal.fire({icon:'warning',title:'Arsipkan '+pdLabel(p)+'?',text:'Transaksi dan laundry bulan ini akan dipindahkan ke arsip. Saldo berjalan tidak berubah.',showCancelButton:true,confirmButtonText:'Ya, arsipkan',cancelButtonText:'Batal',confirmButtonColor:'#1B4B43'}).then(x=>{
+    if(!x.isConfirmed) return;
+    const btn=document.getElementById('archiveSubmit'); btn.disabled=true;
+    callServer('closeMonthlyPeriod',[p],r=>{
+      btn.disabled=false;
+      if(r && r.success){
+        Swal.fire({icon:'success',title:'Berhasil',html:esc(pdLabel(p))+' diarsipkan.<br>Transaksi: '+r.arsipTransaksi+' · Laundry: '+r.arsipLaundry+'<br>Balance: <b>'+pdSigned(r.balance)+'</b>',confirmButtonColor:'#1B4B43'});
+        const y=Number(p.slice(0,4)); if(y!==pdYear) pdYear=y;
+        loadMonthlyArchives();
+      } else periodicError((r && r.message) || 'Gagal mengarsipkan');
+    },()=>{ btn.disabled=false; });
+  });
+}
+function enableAutoMonthlyArchive(){ callServer('installMonthlyArchiveTrigger',[],r=>Swal.fire({icon:'success',title:'Pengaturan otomatis',text:(r&&r.message)||'Trigger aktif.',confirmButtonColor:'#1B4B43'}),null); }
+
+/* ---------- TABUNGAN BULANAN: total, rekap per bulan, catat manual ---------- */
+function loadMonthlySavings(){ // dipanggil saat halaman Tabungan dibuka
+  callServer('getSavingsOverview',[],d=>{
+    if(!d || d.success===false){ periodicError((d && d.message) || 'Data tabungan tidak tersedia'); return; }
+    document.getElementById('savingTotal').textContent=fmtRp(d.total);
+    document.getElementById('savingTotalSub').textContent=d.monthCount
+      ? 'Dari '+d.monthCount+' bulan pencatatan · '+d.entryCount+' catatan'
+      : 'Belum ada tabungan tercatat';
+    document.getElementById('savingYearLabel').textContent='Tahun '+d.year;
+    document.getElementById('savingYear').textContent=fmtRp(d.thisYear);
+    document.getElementById('savingMonth').textContent=fmtRp(d.thisMonth);
+    document.getElementById('savingMonths').innerHTML=d.months.length
+      ? '<div class="pd-stack">'+d.months.map(m=>{
+          const pct=m.target>0 ? Math.min(100,m.nominal/m.target*100) : 0;
+          return '<div class="pd-month"><div class="pd-month-top"><span class="pd-month-name">'+pdLabel(m.periode)+'</span>'+
+            '<span class="badge badge-green">+'+fmtRp(m.nominal)+'</span></div>'+
+            (m.target>0 ? '<div class="pd-progress"><i style="width:'+pct+'%"></i></div><div class="pd-progress-meta"><span>'+Math.round(m.nominal/m.target*100)+'% dari target</span><span>Target '+fmtRp(m.target)+'</span></div>' : '')+
+            '<div class="pd-month-foot">'+m.count+' catatan</div></div>';
+        }).join('')+'</div>'
+      : pdEmpty('savings','Belum ada tabungan. Catat yang pertama di samping.');
+  },null);
+  loadSavingEntries();
+}
+
+function loadSavingEntries(){ // catatan pada bulan yang dipilih di form
+  const p=document.getElementById('savingPeriod').value; if(!p) return;
+  document.getElementById('savingTitle').textContent='Catatan '+pdLabel(p);
+  callServer('getMonthlySavings',[p],rows=>{
+    rows=Array.isArray(rows)?rows:[];
+    document.getElementById('savingTable').innerHTML=rows.length
+      ? '<div class="pd-stack">'+rows.slice().reverse().map(r=>
+          '<div class="list-item pd-entry"><div class="avatar"><span class="material-symbols-outlined" style="font-size:20px">savings</span></div>'+
+          '<div class="main"><div class="title">+'+fmtRp(r.nominal)+'</div>'+
+          '<div class="sub">'+esc(r.tanggal)+' · '+(r.catatan?esc(r.catatan):'Tanpa catatan')+'</div></div></div>').join('')+'</div>'
+      : pdEmpty('savings','Belum ada catatan untuk '+pdLabel(p));
+  },null,true);
+}
+
+function submitMonthlySavings(){
+  const data={periode:document.getElementById('savingPeriod').value,target:document.getElementById('savingTarget').value,nominal:document.getElementById('savingAmount').value,catatan:document.getElementById('savingNote').value};
+  if(!data.periode || data.nominal===''){ periodicError('Lengkapi periode dan nominal tabungan.'); return; }
+  if(!(Number(data.nominal)>0)){ periodicError('Nominal tabungan harus lebih dari 0. Tabungan hanya bisa ditambah.'); return; }
+  if(data.target!=='' && !(Number(data.target)>=0)){ periodicError('Target tidak boleh minus.'); return; }
+  const btn=document.getElementById('savingSubmit'); btn.disabled=true; // cegah klik ganda
+  callServer('saveMonthlySavings',[data],r=>{
+    btn.disabled=false;
+    if(r && r.success){ toastSukses(r.info||'Tersimpan'); document.getElementById('savingAmount').value=''; document.getElementById('savingNote').value=''; loadMonthlySavings(); }
+    else periodicError((r && r.message) || 'Gagal menyimpan');
+  },()=>{ btn.disabled=false; });
+}
+
+pdInit();
+
 
             // Router: setiap kali halaman ditampilkan, muat data terkait.
             function onPageShown(name) {
@@ -3317,7 +3630,6 @@ function loadMonthlyArchives(){callServer('getMonthlyArchives',[],rows=>{documen
                 if (name === 'owner') loadOwners();
                 if (name === 'laundry') loadLaundry();
                 if (name === 'report') initReportPage();
-                if (name === 'annual') loadAnnualStats();
                 if (name === 'savings') loadMonthlySavings();
                 if (name === 'archives') loadMonthlyArchives();
                 if (name === 'setting') loadSettings();
