@@ -1,0 +1,21 @@
+APK OFFICE APP (WebView, tanpa bar alamat)
+
+APK ini membuka https://app-manage.github.io/ layar penuh. Tampilan & data selalu terbaru
+dari situsmu: kalau index.html di GitHub Pages diperbarui, aplikasi ikut berubah tanpa membuat APK ulang.
+
+CARA MEMBUAT APK (gratis, tanpa Android Studio):
+1) Buat repository BARU di GitHub (misal: office-app-android), boleh Private.
+2) Upload SEMUA isi folder ini (termasuk folder .github) ke repository tersebut.
+   Tips: di GitHub pilih "Add file > Upload files", lalu seret semua isi folder.
+   Pastikan folder tersembunyi ".github/workflows/build.yml" ikut terunggah.
+3) Buka tab "Actions". Build berjalan otomatis (atau klik "Build APK" > "Run workflow").
+4) Tunggu +- 3-5 menit sampai tanda centang hijau.
+5) Klik hasil build > bagian "Artifacts" > unduh "OfficeApp-APK" (zip) > ekstrak > app-debug.apk.
+6) Kirim ke HP, buka, izinkan "Install dari sumber tidak dikenal". Jika muncul peringatan Play Protect, pilih "Tetap instal".
+
+CATATAN:
+- APK ini bertanda tangan "debug" otomatis (cukup untuk dipasang sendiri; tidak untuk Google Play).
+- Mengganti alamat situs: edit APP_URL & APP_HOST di app/src/main/java/com/kantorku/app/MainActivity.java.
+- Mengganti nama aplikasi: app/src/main/res/values/strings.xml.
+- Mengganti ikon: timpa app/src/main/res/mipmap-xxxhdpi/ic_launcher.png (192x192 px).
+- Jika build gagal, buka log di tab Actions dan kirim pesan errornya.
