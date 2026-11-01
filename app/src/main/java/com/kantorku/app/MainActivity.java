@@ -17,7 +17,7 @@ import android.webkit.WebViewClient;
  */
 public class MainActivity extends Activity {
 
-    private static final String APP_URL = "https://app-manage.github.io/";
+    private static final String APP_URL = "https://app-manage.github.io/manage-app/";
     private static final String APP_HOST = "app-manage.github.io";
 
     private WebView web;
