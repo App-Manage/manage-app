@@ -11,6 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cek struktur proyek
+        run: |
+          echo "Isi root repository:"
+          ls -la
+          if [ ! -f settings.gradle ]; then
+            echo "::error title=Proyek Android tidak ditemukan::settings.gradle tidak ada di root repository. Isi root sekarang: $(ls | tr '\n' ' '). Upload ulang ISI proyek Android (bukan foldernya) ke root repository."
+            exit 1
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -22,7 +31,18 @@ jobs:
           cache-disabled: true
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+
+      - name: Tampilkan penyebab error
+        if: failure()
+        run: |
+          if [ -f build.log ]; then
+            MSG=$(grep -E -m1 -A12 'What went wrong|error:' build.log | tr '\n' ' ' | cut -c1-900)
+            [ -z "$MSG" ] && MSG=$(tail -15 build.log | tr '\n' ' ' | cut -c1-900)
+            echo "::error title=Penyebab build gagal::$MSG"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
