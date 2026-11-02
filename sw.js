@@ -2,7 +2,7 @@
 //  - Halaman & aset sendiri : jaringan dulu, jatuh ke cache saat offline.
 //  - Pustaka CDN & font     : cache dulu (sekali diunduh, selamanya tersedia offline).
 //  - Data Supabase          : TIDAK pernah di-cache (data disimpan & disinkronkan oleh aplikasi sendiri).
-const VERSION = 'officeapp-v1';
+const VERSION = 'officeapp-v2';
 const SHELL = ['./', './index.html', './config.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 const CDN = [
   'https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js',

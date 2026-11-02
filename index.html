@@ -151,6 +151,15 @@ body[data-theme="dark"] .stat-mini .num{color:#6FD9A7;}
   .nominal-input{font-family:var(--font-mono); font-weight:700;}
   .nominal-input.neg{color:var(--danger);}
   .nominal-input.pos{color:var(--success);}
+  /* pilihan Tambah / Kurangi pada form transaksi */
+  .pm-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .pm-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 8px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface-solid);color:var(--text-mute);font-family:var(--font-display);font-size:13px;font-weight:700;cursor:pointer;}
+  .pm-btn .material-symbols-outlined{font-size:20px;}
+  .pm-btn.plus.active{background:rgba(46,125,91,.12);border-color:var(--success);color:var(--success);}
+  .pm-btn.minus.active{background:rgba(192,57,43,.12);border-color:var(--danger);color:var(--danger);}
+  .trx-preview{font-size:12px;font-weight:600;min-height:16px;margin:-2px 0 10px;}
+  .trx-preview.pos{color:var(--success);}
+  .trx-preview.neg{color:var(--danger);}
 
   /* ---------- LIST ITEM ---------- */
   .list-item{
@@ -1221,19 +1230,27 @@ function drawOwnerPie() {
       <label>Pemilik Dana</label>
       <select id="trxOwner"></select>
     </div>
+    <div class="field">
+      <label>Jenis Transaksi</label>
+      <div class="pm-toggle" id="trxTipeBox">
+        <button type="button" class="pm-btn plus active" data-t="tambah" onclick="setTrxTipe('tambah')"><span class="material-symbols-outlined">add_circle</span>Tambah (+)</button>
+        <button type="button" class="pm-btn minus" data-t="kurang" onclick="setTrxTipe('kurang')"><span class="material-symbols-outlined">remove_circle</span>Kurangi (−)</button>
+      </div>
+    </div>
     <div class="grid-2">
       <div class="field">
         <label>Mata Uang</label>
-        <select id="trxCurrency">
+        <select id="trxCurrency" onchange="markNominalColor()">
           <option value="USD">Rupiah (Rp)</option>
           <option value="KHR">Peso (₱)</option>
         </select>
       </div>
       <div class="field">
-        <label>Nominal (+/-)</label>
-        <input type="number" step="any" id="trxNominal" class="nominal-input" placeholder="cth: 100000 atau -50000" oninput="markNominalColor()">
+        <label>Nominal</label>
+        <input type="number" inputmode="decimal" step="any" id="trxNominal" class="nominal-input pos" placeholder="cth: 100000" oninput="markNominalColor()">
       </div>
     </div>
+    <div class="trx-preview" id="trxPreview"></div>
     <div class="field">
       <label>Kategori</label>
       <input type="text" id="trxKategori" placeholder="cth: Operasional, Gaji, dll">
@@ -1244,7 +1261,7 @@ function drawOwnerPie() {
     </div>
     <button class="btn btn-primary btn-block" onclick="submitTransaction()">Simpan Transaksi</button>
     <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
-      Angka positif = tambah saldo · Angka negatif = kurangi saldo
+      Pilih Tambah atau Kurangi, lalu ketik nominal tanpa tanda minus.
     </div>
   </div>
 
@@ -1292,27 +1309,49 @@ function drawOwnerPie() {
     loadTransactions();
   }
 
+  // Jenis transaksi: 'tambah' (+) atau 'kurang' (−). Nominal diketik positif saja, tandanya dari pilihan ini.
+  let trxTipe = 'tambah';
+
+  function setTrxTipe(t) {
+    trxTipe = t;
+    document.querySelectorAll('#trxTipeBox .pm-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+    markNominalColor();
+  }
+
   function markNominalColor() {
     const el = document.getElementById('trxNominal');
+    // Jika tetap mengetik minus (mis. keyboard komputer): otomatis dianggap "Kurangi".
+    if (Number(el.value) < 0) { el.value = String(Math.abs(Number(el.value))); setTrxTipe('kurang'); return; }
     el.classList.remove('pos', 'neg');
-    if (Number(el.value) > 0) el.classList.add('pos');
-    if (Number(el.value) < 0) el.classList.add('neg');
+    el.classList.add(trxTipe === 'kurang' ? 'neg' : 'pos');
+    const pv = document.getElementById('trxPreview');
+    const v = Number(el.value);
+    pv.className = 'trx-preview';
+    if (v > 0) {
+      const cur = document.getElementById('trxCurrency').value;
+      pv.classList.add(trxTipe === 'kurang' ? 'neg' : 'pos');
+      pv.textContent = (trxTipe === 'kurang' ? 'Saldo akan berkurang ' : 'Saldo akan bertambah ') + fmtByCode(v, cur);
+    } else {
+      pv.textContent = '';
+    }
   }
 
   function submitTransaction() {
     const ownerId = document.getElementById('trxOwner').value;
     const currency = document.getElementById('trxCurrency').value;
-    const nominal = document.getElementById('trxNominal').value;
+    const raw = Number(document.getElementById('trxNominal').value);
+    const nominal = String((trxTipe === 'kurang' ? -1 : 1) * Math.abs(raw));
     const kategori = document.getElementById('trxKategori').value;
     const keterangan = document.getElementById('trxKeterangan').value;
 
     if (!ownerId) { Swal.fire('Pemilik dana belum dipilih', '', 'warning'); return; }
-    if (!nominal || Number(nominal) === 0) { Swal.fire('Nominal wajib diisi (boleh negatif)', '', 'warning'); return; }
+    if (!(Math.abs(raw) > 0)) { Swal.fire('Nominal wajib diisi', 'Ketik angka lebih dari 0.', 'warning'); return; }
 
     callServer('addTransaction', [ownerId, currency, nominal, kategori, keterangan, 'Kasir'], (res) => {
       if (!res.success) { Swal.fire('Gagal', res.message, 'error'); return; }
       toastDelta(res.naik, fmtByCode(Math.abs(Number(nominal)), currency));
       document.getElementById('trxNominal').value = '';
+      markNominalColor();
       document.getElementById('trxKategori').value = '';
       document.getElementById('trxKeterangan').value = '';
       if (res.merahGabungan || res.merahPribadi) {
