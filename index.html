@@ -2,8 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1B4B43">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -449,10 +448,290 @@ body[data-theme="dark"] .stat-mini .num{color:#6FD9A7;}
   .pd-month-note{margin-top:8px;font-size:10px;color:var(--text-mute);}
   .pd-field-hint{font-size:10px;color:var(--text-mute);margin-top:4px;}
 
+
+  /* ---------- AKUN (LOGIN) & STATUS SINKRON ---------- */
+  .auth-screen{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);overflow:auto;}
+  .auth-screen.hidden{display:none;}
+  .auth-card{width:100%;max-width:380px;background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:26px 22px;text-align:center;}
+  .auth-logo{width:56px;height:56px;margin:0 auto 10px;border-radius:16px;background:var(--gradient-primary);display:flex;align-items:center;justify-content:center;font-size:28px;}
+  .auth-title{font-size:20px;font-weight:700;margin-bottom:2px;}
+  .auth-sub{font-size:12px;color:var(--text-mute);margin-bottom:14px;}
+  .auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--bg);padding:4px;border-radius:12px;margin-bottom:14px;}
+  .auth-tab{border:0;background:transparent;padding:9px;border-radius:9px;font:inherit;font-size:13px;font-weight:600;color:var(--text-mute);cursor:pointer;}
+  .auth-tab.active{background:var(--surface-solid);color:var(--primary);box-shadow:0 1px 6px rgba(0,0,0,.08);}
+  .auth-msg{min-height:18px;font-size:12px;margin:2px 0 10px;text-align:left;}
+  .auth-msg.err{color:var(--danger);} .auth-msg.ok{color:var(--success);}
+  .auth-link{border:0;background:none;color:var(--primary-light);font:inherit;font-size:12px;margin-top:12px;cursor:pointer;}
+  .sync-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;white-space:nowrap;margin-left:auto;margin-right:8px;}
+  .sync-badge .material-symbols-outlined{font-size:14px;}
+  .sync-badge.busy .material-symbols-outlined{animation:spin 1s linear infinite;}
+  .sync-badge.off{background:rgba(201,162,39,.35);} .sync-badge.err{background:rgba(192,57,43,.55);}
+  @keyframes spin{to{transform:rotate(360deg);}}
 </style>
 
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body data-theme="light">
+<script>
+/**
+ * SHIM.JS - Emulasi layanan Google Apps Script di browser.
+ *
+ * Seluruh logika bisnis (Finance, Owner, Laundry, Periodic, dst.) adalah file .gs yang SAMA
+ * dengan versi Apps Script, dan dijalankan langsung di browser. File ini menyediakan
+ * pengganti SpreadsheetApp, Utilities, CacheService, LockService, dst. yang datanya
+ * disimpan oleh Store (lokal + tersinkron ke Supabase, lihat store.js).
+ */
+
+// ---------------- STORE: data "sheet" di memori + antrean sinkron ----------------
+const Store = (function () {
+  let uid = null;
+  let data = {};                    // { namaSheet: { rows:[[...]], ids:[...], ords:[...] } }
+  const dirty = new Map();          // id -> namaSheet (perlu di-upsert ke server)
+  const ver = new Map();            // id -> versi (naik tiap perubahan)
+  const deleted = new Set();        // id yang perlu dihapus di server
+  let ordCounter = 0;
+  const hooks = { change: [] };
+
+  function newOrd() { ordCounter = Math.max(ordCounter + 1, Date.now() * 1000); return ordCounter; }
+  function uuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+  function fire() { hooks.change.forEach(f => { try { f(); } catch (e) { console.error(e); } }); }
+  function touch(id, sheet) { dirty.set(id, sheet); ver.set(id, (ver.get(id) || 0) + 1); deleted.delete(id); fire(); }
+
+  // id tetap untuk baris header & pengaturan: dua perangkat yang menginisialisasi bersamaan
+  // menghasilkan baris yang SAMA (bukan dobel).
+  function rowId(sheet, cells, isHeader) {
+    if (isHeader) return uid + ':hdr:' + sheet;
+    if (sheet === 'Pengaturan' && cells && cells[0] !== undefined && cells[0] !== '') return uid + ':set:' + cells[0];
+    return uuid();
+  }
+
+  return {
+    onChange(f) { hooks.change.push(f); },
+    user() { return uid; },
+    reset(userId) { uid = userId; data = {}; dirty.clear(); ver.clear(); deleted.clear(); ordCounter = 0; },
+    hasSheet(n) { return !!data[n]; },
+    sheetNames() { return Object.keys(data); },
+    sheet(n) { return data[n]; },
+    createSheet(n) { if (!data[n]) data[n] = { rows: [], ids: [], ords: [] }; return data[n]; },
+    dropSheet(n) {
+      const s = data[n]; if (!s) return;
+      s.ids.forEach(id => { deleted.add(id); dirty.delete(id); });
+      delete data[n]; fire();
+    },
+    appendRow(n, cells) {
+      const s = this.createSheet(n);
+      const id = rowId(n, cells, s.rows.length === 0);
+      s.rows.push(cells); s.ids.push(id); s.ords.push(newOrd());
+      touch(id, n);
+      return s.rows.length;
+    },
+    setCell(n, r, c, v) {          // r, c = 0-based
+      const s = this.createSheet(n);
+      while (s.rows.length <= r) {
+        const cells = [];
+        s.rows.push(cells); s.ids.push(rowId(n, cells, s.rows.length === 1)); s.ords.push(newOrd());
+      }
+      const row = s.rows[r];
+      while (row.length <= c) row.push('');
+      row[c] = v;
+      touch(s.ids[r], n);
+    },
+    deleteRowAt(n, idx) {          // idx = 0-based
+      const s = data[n]; if (!s || idx < 0 || idx >= s.rows.length) return;
+      const id = s.ids[idx];
+      s.rows.splice(idx, 1); s.ids.splice(idx, 1); s.ords.splice(idx, 1);
+      dirty.delete(id); deleted.add(id); fire();
+    },
+    /** Ganti seluruh isi sheet dengan rows2D (baris pertama = header). */
+    replaceSheet(n, rows2D) {
+      const s = this.createSheet(n);
+      s.ids.forEach(id => { deleted.add(id); dirty.delete(id); });
+      s.rows = []; s.ids = []; s.ords = [];
+      rows2D.forEach(r => this.appendRow(n, r.slice()));
+    },
+    // ---- sinkron ----
+    hasPending() { return dirty.size > 0 || deleted.size > 0; },
+    pendingCount() { return dirty.size + deleted.size; },
+    takeBatch(maxUp, maxDel) {
+      const byIdx = {};
+      const ups = [];
+      for (const [id, sheet] of dirty) {
+        if (ups.length >= maxUp) break;
+        const s = data[sheet]; if (!s) continue;
+        if (!byIdx[sheet]) { byIdx[sheet] = new Map(); s.ids.forEach((x, i) => byIdx[sheet].set(x, i)); }
+        const i = byIdx[sheet].get(id);
+        if (i === undefined) { dirty.delete(id); continue; }
+        ups.push({ id, sheet, ord: s.ords[i], cells: s.rows[i], _v: ver.get(id) });
+      }
+      const dels = []; for (const id of deleted) { if (dels.length >= maxDel) break; dels.push(id); }
+      return { ups, dels };
+    },
+    ackUps(ups) { ups.forEach(u => { if (ver.get(u.id) === u._v) { dirty.delete(u.id); ver.delete(u.id); } }); },
+    ackDels(ids) { ids.forEach(id => deleted.delete(id)); },
+    // ---- snapshot lokal (IndexedDB) & muat dari server ----
+    snapshot() { return { uid, data, dirty: Array.from(dirty), deleted: Array.from(deleted), ordCounter }; },
+    restore(snap) {
+      data = snap.data || {}; ordCounter = snap.ordCounter || 0;
+      dirty.clear(); deleted.clear(); ver.clear();
+      (snap.dirty || []).forEach(([id, sh]) => { dirty.set(id, sh); ver.set(id, 1); });
+      (snap.deleted || []).forEach(id => deleted.add(id));
+    },
+    loadFromServer(list) {
+      list.sort((a, b) => (a.ord < b.ord ? -1 : (a.ord > b.ord ? 1 : (a.id < b.id ? -1 : 1))));
+      data = {};
+      list.forEach(r => {
+        const s = this.createSheet(r.sheet);
+        s.rows.push(Array.isArray(r.cells) ? r.cells : []); s.ids.push(r.id); s.ords.push(Number(r.ord));
+        if (Number(r.ord) > ordCounter) ordCounter = Number(r.ord);
+      });
+    },
+    exportAll() {   // untuk backup JSON
+      const out = {};
+      Object.keys(data).forEach(n => { out[n] = data[n].rows.map(r => r.slice()); });
+      return out;
+    }
+  };
+})();
+
+// ---------------- Logger / Utilities ----------------
+const Logger = { log: function () { console.log.apply(console, arguments); } };
+
+const Utilities = {
+  getUuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+  },
+  sleep() {},
+  base64EncodeWebSafe(s) {
+    return btoa(unescape(encodeURIComponent(String(s)))).replace(/\+/g, '-').replace(/\//g, '_');
+  },
+  formatString(fmt) {
+    const a = Array.prototype.slice.call(arguments, 1); let i = 0;
+    return String(fmt).replace(/%(0?)(\d*)d/g, (m, z, w) => String(a[i++]).padStart(Number(w) || 0, z ? '0' : ' '));
+  },
+  /** Format tanggal pada zona waktu tertentu: yyyy, MM, dd, HH, mm, ss, EEEE, EEE. */
+  formatDate(date, tz, fmt) {
+    const d = (date instanceof Date) ? date : new Date(date);
+    let parts;
+    const opts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'long', hourCycle: 'h23' };
+    try { parts = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz || undefined }, opts)).formatToParts(d); }
+    catch (e) { parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(d); }
+    const p = {}; parts.forEach(x => { p[x.type] = x.value; });
+    if (p.hour === '24') p.hour = '00';
+    const hari = {
+      Monday: 'Monday', Tuesday: 'Tuesday', Wednesday: 'Wednesday', Thursday: 'Thursday', Friday: 'Friday', Saturday: 'Saturday', Sunday: 'Sunday'
+    };
+    return String(fmt).replace(/yyyy|MM|dd|HH|mm|ss|EEEE|EEE/g, t => ({
+      yyyy: p.year, MM: p.month, dd: p.day, HH: p.hour, mm: p.minute, ss: p.second,
+      EEEE: hari[p.weekday] || p.weekday, EEE: (hari[p.weekday] || p.weekday).slice(0, 3)
+    })[t]);
+  }
+};
+
+// ---------------- Cache / Lock / Properties / Trigger ----------------
+const CacheService = {
+  getScriptCache() {
+    const m = new Map();
+    return {
+      get(k) { const e = m.get(k); if (!e) return null; if (e.t && e.t < Date.now()) { m.delete(k); return null; } return e.v; },
+      put(k, v, sec) { m.set(k, { v: String(v), t: sec ? Date.now() + sec * 1000 : 0 }); },
+      remove(k) { m.delete(k); }
+    };
+  }
+};
+const LockService = { getScriptLock() { return { waitLock() {}, releaseLock() {} }; } };   // eksekusi di browser berurutan (tanpa interupsi)
+const PropertiesService = {
+  getScriptProperties() {
+    const key = k => 'oa_prop_' + (Store.user() || '') + '_' + k;
+    return {
+      getProperty(k) { try { return localStorage.getItem(key(k)); } catch (e) { return null; } },
+      setProperty(k, v) { try { localStorage.setItem(key(k), String(v)); } catch (e) {} }
+    };
+  }
+};
+const ScriptApp = {
+  getProjectTriggers() { return []; },
+  newTrigger() { const o = { timeBased() { return o; }, onMonthDay() { return o; }, atHour() { return o; }, inTimezone() { return o; }, create() {} }; return o; },
+  getOAuthToken() { return ''; }
+};
+const ContentService = {
+  createTextOutput(s) { return { _s: s, setMimeType() { return this; } }; },
+  MimeType: { JSON: 'json' }
+};
+
+// ---------------- SpreadsheetApp (di atas Store) ----------------
+function _colNum(letters) { let n = 0; for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64); return n; }
+
+function _cleanIn(v) {            // apostrof pelindung formula (safeCell_) tidak ikut tersimpan, sama seperti di Google Sheets
+  if (typeof v === 'string' && /^'[=+\-@]/.test(v)) return v.slice(1);
+  if (v instanceof Date) return v.toISOString();
+  return v === undefined || v === null ? '' : v;
+}
+
+function _makeRange(name, r, c, nr, nc) {
+  const R = {
+    getValues() {
+      const s = Store.sheet(name), out = [];
+      for (let i = 0; i < nr; i++) {
+        const row = s ? s.rows[r - 1 + i] : null, o = [];
+        for (let j = 0; j < nc; j++) { const v = row ? row[c - 1 + j] : undefined; o.push(v === undefined ? '' : v); }
+        out.push(o);
+      }
+      return out;
+    },
+    getValue() { return R.getValues()[0][0]; },
+    setValues(vals) { vals.forEach((row, i) => row.forEach((v, j) => Store.setCell(name, r - 1 + i, c - 1 + j, _cleanIn(v)))); return R; },
+    setValue(v) { Store.setCell(name, r - 1, c - 1, _cleanIn(v)); return R; },
+    setNumberFormat() { return R; }, setFontWeight() { return R; }, setBackground() { return R; }, setFontColor() { return R; }
+  };
+  return R;
+}
+
+function _makeSheet(name) {
+  const sh = {
+    getName() { return name; },
+    getSheetId() { return 0; },
+    getLastRow() { const s = Store.sheet(name); return s ? s.rows.length : 0; },
+    getLastColumn() { const s = Store.sheet(name); return s ? s.rows.reduce((m, r) => Math.max(m, r.length), 0) : 0; },
+    getMaxRows() { return sh.getLastRow() + 1000; },
+    appendRow(arr) { Store.appendRow(name, arr.map(_cleanIn)); return sh; },
+    setFrozenRows() {},
+    deleteRow(n) { Store.deleteRowAt(name, n - 1); },
+    deleteRows(n, count) { for (let i = 0; i < count; i++) Store.deleteRowAt(name, n - 1); },
+    getDataRange() { return _makeRange(name, 1, 1, Math.max(sh.getLastRow(), 0), Math.max(sh.getLastColumn(), 1)); },
+    getRange(a, b, c, d) {
+      if (typeof a === 'string') return _makeRange(name, 1, 1, 0, 0);   // 'A:A' dll hanya untuk format sel: diabaikan
+      return _makeRange(name, a, b, c || 1, d || 1);
+    }
+  };
+  return sh;
+}
+
+const _ssObj = {
+  getId() { return 'local'; },
+  getSheetByName(n) { return Store.hasSheet(n) ? _makeSheet(n) : null; },
+  insertSheet(n) { Store.createSheet(n); return _makeSheet(n); },
+  deleteSheet(sh) { Store.dropSheet(sh.getName()); },
+  getSheets() { return Store.sheetNames().map(_makeSheet); },
+  getSpreadsheetTimeZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
+  }
+};
+const SpreadsheetApp = {
+  getActiveSpreadsheet() { return _ssObj; },
+  flush() {},
+  getUi() { throw new Error('UI Spreadsheet tidak tersedia di aplikasi web'); },
+  create() { throw new Error('Tidak tersedia di aplikasi web'); }
+};
+
+</script>
+
   <div id="app">
 
     <div class="topbar">
@@ -461,6 +740,7 @@ body[data-theme="dark"] .stat-mini .num{color:#6FD9A7;}
         <span id="companyName">Perusahaan Saya</span>
         <small><span id="dayName">-</span> · <span id="dateDisplay">-</span></small>
       </div>
+      <div class="sync-badge ok" id="syncBadge" onclick="flushNow()" title="Status sinkron"><span class="material-symbols-outlined">cloud_done</span><span>Tersinkron</span></div>
       <div class="clock" id="clockDisplay">00:00:00</div>
     </div>
 
@@ -675,11 +955,9 @@ function renderBudgetKategoriList(list, cur) {
   document.getElementById('balanceRupiahCard').classList.toggle('merah', data.merahGabungan);
   document.getElementById('balancePesoCard').classList.toggle('merah', data.merahGabungan);
 
-  google.charts.setOnLoadCallback(() => {
   drawIncomeExpenseChart();
   drawFinanceChart();
   drawOwnerPie();   // ambil data sendiri sesuai tab aktif
-});
 }
   function renderTitipanDetail(list) {
   const container = document.getElementById('titipanDetailList');
@@ -709,51 +987,23 @@ function renderMerahCard(cardId, textId, merah, kekurangan) {
 
   function drawIncomeExpenseChart() {
     callServer('getIncomeExpenseChartData', [], (rows) => {
+      rows = rows || [];
       const k = kodeHalaman('dashboard');
       document.getElementById('chartIEHint').textContent = '14 hari · ' + k;
-      const arr = [['Tanggal', 'Pemasukan', 'Pengeluaran']];
-      (rows || []).forEach(r => arr.push([r.tanggal.slice(5), toHal(r.masuk, 'dashboard'), toHal(r.keluar, 'dashboard')]));
-      const data = google.visualization.arrayToDataTable(arr);
-      const chart = new google.visualization.ColumnChart(document.getElementById('chartAttendance'));
-      chart.draw(data, {
-        legend: { position: 'top', textStyle: { fontSize: 10 } },
-        colors: ['#2E7D5B', '#C0392B'],
-        chartArea: { width: '88%', height: '66%' },
-        backgroundColor: 'transparent',
-        hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 9 }, format: 'short', minValue: 0 }
-      });
+      Charts.column(document.getElementById('chartAttendance'), rows.map(r => r.tanggal.slice(5)), [
+        { name: 'Pemasukan', color: '#2E7D5B', values: rows.map(r => toHal(r.masuk, 'dashboard')) },
+        { name: 'Pengeluaran', color: '#C0392B', values: rows.map(r => toHal(r.keluar, 'dashboard')) }
+      ], { height: 210, fmt: v => fmtMoney(v, k) });
     }, null, true);
   }
 
-  function drawAttendanceChart() {
-    callServer('getAttendanceChartData', [], (rows) => {
-      const arr = [['Tanggal', 'Hadir', 'Izin', 'Sakit', 'Alpha']];
-      rows.forEach(r => arr.push([r.tanggal.slice(5), r.hadir, r.izin, r.sakit, r.alpha]));
-      const data = google.visualization.arrayToDataTable(arr);
-      const chart = new google.visualization.ColumnChart(document.getElementById('chartAttendance'));
-      chart.draw(data, {
-        legend: { position: 'top', textStyle: { fontSize: 10 } },
-        colors: ['#2E7D5B', '#C9A227', '#5C6F69', '#C0392B'],
-        chartArea: { width: '90%', height: '70%' },
-        backgroundColor: 'transparent', isStacked: true,
-        hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 9 } }
-      });
-    }, null, true);
-  }
+  
 
   function drawFinanceChart() {
     callServer('getFinanceChartData', [], (rows) => {
-      const arr = [['Tanggal', 'Saldo (' + kodeHalaman('dashboard') + ')']];
-      rows.forEach(r => arr.push([r.tanggal.slice(5), toHal(r.saldo, 'dashboard')]));
-      if (arr.length === 1) arr.push(['-', 0]);
-      const data = google.visualization.arrayToDataTable(arr);
-      const chart = new google.visualization.AreaChart(document.getElementById('chartFinance'));
-      chart.draw(data, {
-        legend: 'none', colors: ['#1B4B43'],
-        chartArea: { width: '90%', height: '75%' },
-        backgroundColor: 'transparent',
-        hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 9 }, format: 'short' }
-      });
+      rows = rows || [];
+      const k = kodeHalaman('dashboard');
+      Charts.area(document.getElementById('chartFinance'), rows.map(r => r.tanggal.slice(5)), rows.map(r => toHal(r.saldo, 'dashboard')), { color: '#1B4B43', height: 190, fmt: v => fmtMoney(v, k) });
     }, null, true);
   }
 
@@ -767,17 +1017,9 @@ function setPieJenis(jenis) {
 
 function drawOwnerPie() {
   callServer('getOwnerPieChartData', [pieJenisAktif], (owners) => {
-    const arr = [['Pemilik', 'Saldo ' + kodeHalaman('dashboard')]];
-    (owners || []).forEach(o => arr.push([o.nama, toHal(o.saldoUSD, 'dashboard')]));
-    if (arr.length === 1) arr.push(['Belum ada data', 1]);
-    const data = google.visualization.arrayToDataTable(arr);
-    const chart = new google.visualization.PieChart(document.getElementById('chartOwnerPie'));
-    chart.draw(data, {
-      legend: { position: 'right', textStyle: { fontSize: 10 } },
-      colors: ['#1B4B43', '#C9A227', '#2E7D5B', '#8FA69E', '#C0392B'],
-      chartArea: { width: '95%', height: '85%' },
-      backgroundColor: 'transparent', pieHole: 0.45
-    });
+    const k = kodeHalaman('dashboard');
+    const warna = ['#1B4B43', '#C9A227', '#2E7D5B', '#8FA69E', '#C0392B', '#5C6F69', '#3E9E74', '#E9C766'];
+    Charts.donut(document.getElementById('chartOwnerPie'), (owners || []).map((o, i) => ({ label: o.nama, value: toHal(o.saldoUSD, 'dashboard'), color: warna[i % warna.length] })), { height: 210, fmt: v => fmtMoney(v, k) });
   }, null, true);
 }
 </script>
@@ -1567,7 +1809,7 @@ function drawOwnerPie() {
       if (res.success) {
         Swal.fire({
           icon: 'success', title: 'Ekspor Berhasil',
-          html: `<a href="${esc(res.url)}" target="_blank" rel="noopener">Buka file hasil ekspor</a>`,
+          html: `<a href="${esc(res.url)}" download="${esc(res.name || 'laporan')}" target="_blank" rel="noopener">Buka / unduh file hasil ekspor</a>`,
           confirmButtonColor: '#1B4B43'
         });
       }
@@ -1661,10 +1903,11 @@ function drawOwnerPie() {
 
   <button class="btn btn-primary btn-block" style="margin-bottom:14px;" onclick="saveGeneralSettings()">Simpan Pengaturan</button>
 
-  <div class="section-title">Keamanan</div>
+  <div class="section-title">Akun &amp; Keamanan</div>
   <div class="card">
+    <div style="font-size:12px;color:var(--text-mute);margin-bottom:10px;">Masuk sebagai <b id="setAkunEmail">-</b></div>
     <div class="grid-2">
-      <button class="btn btn-outline" onclick="changePinUI()">🔑 Ganti PIN</button>
+      <button class="btn btn-outline" onclick="changePasswordUI()">🔑 Ganti Password</button>
       <button class="btn btn-outline" style="color:var(--danger);" onclick="logoutApp()">🚪 Keluar</button>
     </div>
   </div>
@@ -1673,6 +1916,13 @@ function drawOwnerPie() {
   <div class="card">
     <button class="btn btn-gold btn-block" onclick="doBackup()"><span class="material-symbols-outlined" style="font-size:16px;">cloud_upload</span> Backup Sekarang</button>
     <div id="backupList" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="section-title">Impor Data</div>
+  <div class="card">
+    <div style="font-size:12px;color:var(--text-mute);margin-bottom:10px;">Pulihkan dari file backup, atau pindahkan data dari Spreadsheet lama (file hasil menu Ekspor). <b>Semua data di akun ini akan diganti.</b></div>
+    <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importDataFile(this)">
+    <button class="btn btn-outline btn-block" onclick="document.getElementById('importFile').click()"><span class="material-symbols-outlined" style="font-size:16px;">upload_file</span> Pilih File Backup (.json)</button>
   </div>
 </div>
 
@@ -1715,7 +1965,10 @@ function highlightNotifToggle(prefix, aktif) {
     document.getElementById('setTargetTabungan').value = s.TargetTabungan || '';
     budgetCur = s.MataUangAnggaran === 'KHR' ? 'KHR' : 'USD';
     applyBudgetCurrencyUI_();
-    document.getElementById('setTimezone').value = s.Timezone || 'Asia/Phnom_Penh';
+    const tzEl = document.getElementById('setTimezone'), tz = s.Timezone || 'Asia/Jakarta';
+    if (![].some.call(tzEl.options, o => o.value === tz)) tzEl.insertAdjacentHTML('afterbegin', '<option value="' + esc(tz) + '">' + esc(tz) + '</option>');
+    tzEl.value = tz;
+    document.getElementById('setAkunEmail').textContent = (typeof Session !== 'undefined' && Session.email) || '-';
     highlightTheme(s.Tema || 'light');
     updateLimitPreview();
     highlightNotifToggle('Notif', s.NotifikasiAktif !== 'false');
@@ -1747,9 +2000,32 @@ function highlightNotifToggle(prefix, aktif) {
     });
   }
 
+  function importDataFile(inp) {
+    const f = inp.files && inp.files[0]; inp.value = '';
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      let obj;
+      try { obj = JSON.parse(rd.result); } catch (e) { Swal.fire('File tidak valid', 'Bukan file JSON.', 'error'); return; }
+      Swal.fire({
+        icon: 'warning', title: 'Ganti semua data akun ini?',
+        html: 'Data yang ada sekarang akan <b>diganti</b> dengan isi file <b>' + esc(f.name) + '</b>.<br><small>Disarankan Backup Sekarang dulu.</small>',
+        showCancelButton: true, confirmButtonText: 'Ya, impor', cancelButtonText: 'Batal', confirmButtonColor: '#C0392B'
+      }).then(x => {
+        if (!x.isConfirmed) return;
+        callServer('importBackup', [obj], (r) => {
+          if (!r || !r.success) { Swal.fire('Gagal', (r && r.message) || 'Impor gagal', 'error'); return; }
+          Swal.fire({ icon: 'success', title: 'Impor berhasil', text: r.sheets + ' tabel, ' + r.rows + ' baris. Aplikasi dimuat ulang.', confirmButtonColor: '#1B4B43' })
+            .then(() => { flushNow().finally(() => location.reload()); });
+        });
+      });
+    };
+    rd.readAsText(f);
+  }
+
   function doBackup() {
     callServer('backupSpreadsheet', [], (res) => {
-      Swal.fire({ icon: 'success', title: 'Backup Berhasil', html: `<a href="${esc(res.url)}" target="_blank" rel="noopener">${esc(res.name)}</a>`, confirmButtonColor: '#1B4B43' });
+      Swal.fire({ icon: 'success', title: 'Backup Berhasil', html: `<a href="${esc(res.url)}" download="${esc(res.name)}" target="_blank" rel="noopener">Unduh ${esc(res.name)}</a><br><small style="color:var(--text-mute);">Simpan file ini di tempat aman. Bisa dipulihkan lewat Impor Data.</small>`, confirmButtonColor: '#1B4B43' });
       loadSettings();
     });
   }
@@ -1900,36 +2176,7 @@ function updateLimitPreview() {
     });
   }
 
-  function changePinUI() {
-    Swal.fire({
-      title: 'Ganti PIN',
-      html:
-        '<input id="swPinLama" class="swal2-input" type="password" placeholder="PIN lama">' +
-        '<input id="swPinBaru" class="swal2-input" type="password" placeholder="PIN baru (min. 6 karakter)">' +
-        '<input id="swPinBaru2" class="swal2-input" type="password" placeholder="Ulangi PIN baru">',
-      confirmButtonText: 'Simpan', confirmButtonColor: '#1B4B43', showCancelButton: true, cancelButtonText: 'Batal',
-      focusConfirm: false,
-      preConfirm: () => {
-        const lama = document.getElementById('swPinLama').value;
-        const baru = document.getElementById('swPinBaru').value;
-        const baru2 = document.getElementById('swPinBaru2').value;
-        if (!lama || !baru) { Swal.showValidationMessage('Semua kolom wajib diisi'); return false; }
-        if (baru.length < 6) { Swal.showValidationMessage('PIN baru minimal 6 karakter'); return false; }
-        if (baru !== baru2) { Swal.showValidationMessage('Ulangi PIN baru tidak sama'); return false; }
-        return { oldPin: lama, newPin: baru };
-      }
-    }).then(res => {
-      if (!res.isConfirmed) return;
-      callServer('changePin', [res.value.oldPin, res.value.newPin], (r) => {
-        if (r.success) {
-          setToken_(r.token);
-          toastSukses('PIN diganti. Perangkat lain harus login ulang.');
-        } else {
-          Swal.fire('Gagal', r.message, 'error');
-        }
-      });
-    });
-  }
+
 </script>
 
       <div class="page" id="page-savings">
@@ -2212,14 +2459,31 @@ pdInit();
       <div class="navitem" id="nav-setting" onclick="goPage('setting')"><span class="material-symbols-outlined">settings</span>Pengaturan</div>
     </div>
 
+
+    <div class="auth-screen hidden" id="authScreen">
+      <form class="auth-card" onsubmit="authSubmit(event)" autocomplete="on">
+        <div class="auth-logo">🏢</div>
+        <h1 class="auth-title">Office App</h1>
+        <p class="auth-sub" id="authSub">Masuk ke akun Anda</p>
+        <div class="auth-tabs" id="authTabs">
+          <button type="button" class="auth-tab active" id="authTabLogin" onclick="authSetMode('login')">Masuk</button>
+          <button type="button" class="auth-tab" id="authTabRegister" onclick="authSetMode('register')">Daftar</button>
+        </div>
+        <div class="field" id="authRowEmail"><input type="email" id="authEmail" placeholder="Email" autocomplete="email" inputmode="email"></div>
+        <div class="field" id="authRowPass"><input type="password" id="authPass" placeholder="Password" autocomplete="current-password"></div>
+        <div class="field" id="authRow2" style="display:none"><input type="password" id="authPass2" placeholder="Ulangi password" autocomplete="new-password"></div>
+        <div class="auth-msg" id="authMsg"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="authBtn">Masuk</button>
+        <button type="button" class="auth-link" id="authForgotLink" onclick="authSetMode('forgot')">Lupa password?</button>
+        <button type="button" class="auth-link" onclick="authSetMode('login')" style="display:none" id="authBackLink">Kembali</button>
+      </form>
+    </div>
+
     <div class="loader-overlay" id="loaderOverlay"><div class="loader-ring"></div></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://www.gstatic.com/charts/loader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
 <script>
-  google.charts.load('current', { packages: ['corechart'] });
-
   // ================= MATA UANG (PUSAT PENGATURAN) =================
   // Kode slot di sheet/backend tetap 'USD' dan 'KHR', artinya sekarang:
   //   'USD' = Mata Uang Utama 1 (basis)     'KHR' = Mata Uang Utama 2
@@ -2447,7 +2711,7 @@ function showGlobalWarningDetail() {
 
 // 👇 GANTI dengan URL Web App Apps Script kamu (Deploy > New deployment > Web app)
 // Formatnya: https://script.google.com/macros/s/XXXXXXXXXXXX/exec
-const API_URL = 'https://script.google.com/macros/s/AKfycbwA7my5ezL6FqaIiuylM4oE-iCVDFvPCbDq1_RFmz_wgtp_DwYbKBEkbtJykSrKsrAL/exec';
+const API_URL = 'PASTE_URL_WEBAPP_APPS_SCRIPT_DI_SINI';
 
 /**
  * Peta nama parameter tiap "action", URUTANNYA HARUS SAMA dengan urutan
@@ -2523,7 +2787,8 @@ const PARAM_MAP = {
   getWorldCurrencyRates: ['base'],
   saveCurrencyConfig: ['data'],
   backupSpreadsheet: [],
-  listBackups: []
+  listBackups: [],
+  importBackup: ['data']
 };
 
 /** Ubah array argumen positional jadi object {namaParam: value} sesuai PARAM_MAP. */
@@ -2540,122 +2805,6 @@ function buildParams_(fnName, args) {
   return obj;
 }
 
-// ---------------- TOKEN LOGIN ----------------
-const TOKEN_KEY = 'appmanage_token';
-let tokenMemori_ = '';
-
-function getToken_() {
-  try { return localStorage.getItem(TOKEN_KEY) || tokenMemori_; } catch (e) { return tokenMemori_; }
-}
-function setToken_(t) {
-  tokenMemori_ = t || '';
-  try {
-    if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY);
-  } catch (e) { /* penyimpanan diblokir: token cukup di memori */ }
-}
-
-function fetchWithTimeout_(url, opts, ms) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms || 30000);
-  return fetch(url, Object.assign({}, opts, { signal: ctrl.signal })).finally(() => clearTimeout(timer));
-}
-
-function apiPost_(action, params, token) {
-  return fetchWithTimeout_(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain: hindari CORS preflight
-    body: JSON.stringify({ action: action, params: params || {}, token: token || '' })
-  }, 30000).then(res => {
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
-  });
-}
-
-function apiLogin_(pin) {
-  return apiPost_('login', { pin: pin }, '');
-}
-
-let loginShowing_ = false;
-
-function lockUi_(lock) {
-  const c = document.getElementById('content');
-  if (c) c.style.visibility = lock ? 'hidden' : '';
-}
-
-/** Dipanggil saat token tidak ada / tidak valid / kadaluarsa. */
-function handleAuthError_() {
-  setToken_('');
-  stopGlobalWarningSound();
-  const b = document.getElementById('globalWarningBanner');
-  if (b) b.classList.add('hidden');
-  showLoginPrompt_();
-}
-
-function showLoginPrompt_() {
-  if (loginShowing_) return;
-  loginShowing_ = true;
-  lockUi_(true);
-  Swal.fire({
-    title: '🔐 Login',
-    text: 'Masukkan PIN untuk membuka aplikasi',
-    input: 'password',
-    inputPlaceholder: 'PIN',
-    inputAttributes: { autocapitalize: 'off', autocomplete: 'current-password' },
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    confirmButtonText: 'Masuk',
-    confirmButtonColor: '#1B4B43',
-    showLoaderOnConfirm: true,
-    preConfirm: function (pin) {
-      if (!pin) { Swal.showValidationMessage('PIN wajib diisi'); return false; }
-      return apiLogin_(pin).then(function (res) {
-        if (!res || !res.success || !res.token) {
-          Swal.showValidationMessage((res && res.message) || 'Login gagal');
-          return false;
-        }
-        return res;
-      }).catch(function (err) {
-        Swal.showValidationMessage('Gagal terhubung: ' + (err.name === 'AbortError' ? 'koneksi terlalu lama' : (err.message || err)));
-        return false;
-      });
-    }
-  }).then(function (r) {
-    loginShowing_ = false;
-    if (r.isConfirmed && r.value && r.value.token) {
-      setToken_(r.value.token);
-      refreshAfterLogin_();
-    } else if (!getToken_()) {
-      setTimeout(showLoginPrompt_, 300);
-    }
-  });
-}
-
-/** Setelah login berhasil: tampilkan lagi konten & muat ulang data halaman aktif. */
-function refreshAfterLogin_() {
-  lockUi_(false);
-  callServer('getDashboardData', [], (data) => {
-    const p = data && data.perusahaan;
-    if (!p) return;
-    const nameEl = document.getElementById('companyName');
-    if (nameEl) nameEl.textContent = p.nama || 'Perusahaan Saya';
-    if (p.tema === 'dark') document.body.setAttribute('data-theme', 'dark');
-    const now = new Date();
-    const dayEl = document.getElementById('dayName');
-    const dateEl = document.getElementById('dateDisplay');
-    if (dayEl) dayEl.textContent = now.toLocaleDateString('id-ID', { weekday: 'long' });
-    if (dateEl) dateEl.textContent = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  }, null, true);
-  const aktif = document.querySelector('.page.active');
-  goPage(aktif ? aktif.id.replace('page-', '') : 'dashboard');
-  checkGlobalWarnings();
-}
-
-/** Keluar dari aplikasi di perangkat ini. */
-function logoutApp() {
-  const selesai = () => { setToken_(''); stopGlobalWarningSound(); showLoginPrompt_(); };
-  callServer('logout', [], selesai, selesai, true);
-}
-
 let lastToastError_ = 0;
 function notifyError_(err, silent) {
   const msg = err && err.name === 'AbortError' ? 'Koneksi terlalu lama, coba lagi' : ((err && err.message) || String(err));
@@ -2670,56 +2819,7 @@ function notifyError_(err, silent) {
   }
 }
 
-/**
- * Pengganti callServer() lama (yang berbasis google.script.run).
- * Signature TETAP SAMA: callServer(fnName, args, onSuccess, onError, silent)
- * — jadi seluruh kode UI di halaman lain tidak perlu disentuh.
- */
-function callServer(fnName, args, onSuccess, onError, silent) {
-  args = args || [];
-  const token = getToken_();
-  if (!token) {
-    handleAuthError_();
-    if (onError) onError(new Error('Belum login'));
-    return;
-  }
-
-  let selesai = false;
-  const akhiri = () => { if (!silent && !selesai) { selesai = true; hideLoading(); } };
-  if (!silent) showLoading();
-
-  apiPost_(fnName, buildParams_(fnName, args), token)
-    .then(data => {
-      akhiri();
-      if (data && data.authError) {
-        handleAuthError_();
-        if (onError) onError(new Error(data.message || 'Sesi berakhir'));
-        return;
-      }
-      // Error dari server (bukan jawaban normal fungsi bisnis) -> perlakukan sebagai error.
-      if (data && data.serverError) throw new Error(data.message || 'Server error');
-      if (onSuccess) onSuccess(data);
-    })
-    .catch(err => {
-      akhiri();
-      notifyError_(err, silent);
-      if (onError) onError(err);
-    });
-}
-
-/**
- * ====================================================================
- * CATATAN DEPLOY
- * ====================================================================
- * 1) Deploy Apps Script sebagai Web App: Execute as = Me, Who has access = Anyone
- *    (aman karena semua action sekarang wajib login PIN). Setiap update kode:
- *    Manage deployments > edit > New version, supaya URL /exec memuat kode terbaru.
- * 2) Atur PIN dulu: Spreadsheet > menu Office App > Atur PIN Login.
- *    Selama PIN belum diatur, semua akses ditolak.
- * 3) Kalau ada error CORS: pastikan request memakai Content-Type text/plain
- *    (sudah otomatis di apiPost_) dan "Who has access" = Anyone.
- * ====================================================================
- */
+/* callServer(fnName, args, onSuccess, onError, silent) ada di runtime/app.js: memanggil logika lokal, data tersinkron ke Supabase. */
 
   // ---------------- JAM REALTIME ----------------
   function startClock() {
@@ -2866,9 +2966,8 @@ function callServer(fnName, args, onSuccess, onError, silent) {
   window.addEventListener('DOMContentLoaded', () => {
     startClock();
     initAutoFit_();
-    if (!getToken_()) showLoginPrompt_();
-    goPage('dashboard');
     startGlobalWarningWatcher();
+    bootApp();
   });
 </script>
 
@@ -2892,27 +2991,2960 @@ function callServer(fnName, args, onSuccess, onError, silent) {
       if (name === 'setting') loadSettings();
     }
 
-    // Nama perusahaan, tema, dan tanggal untuk sesi login yang masih tersimpan.
-    // (Setelah login baru, bagian ini ditangani refreshAfterLogin_ di Script.)
-    if (getToken_()) {
-      callServer('getDashboardData', [], (data) => {
-        const p = data && data.perusahaan;
-        if (!p) return;
-        document.getElementById('companyName').textContent = p.nama || 'Perusahaan Saya';
-        if (p.tema === 'dark') document.body.setAttribute('data-theme', 'dark');
-        const now = new Date();
-        document.getElementById('dayName').textContent = now.toLocaleDateString('id-ID', { weekday: 'long' });
-        document.getElementById('dateDisplay').textContent = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-      }, null, true);
-    }
   </script>
-  <script>
-    // Daftarkan service worker (supaya bisa di-install sebagai PWA). Aman kalau gagal.
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js').catch(function () {});
+<script>
+// ===== Helper.gs =====
+/**
+ * HELPER.GS
+ * Fungsi utilitas yang dipakai lintas modul: akses sheet generik,
+ * pengaturan (Settings), format mata uang, caching, dan ID generator.
+ *
+ * CATATAN MATA UANG: kode di sheet & backend TETAP 'USD' dan 'KHR' supaya semua
+ * file lain tetap nyambung, tapi artinya = SLOT mata uang utama yang bisa diatur user:
+ *    'USD' = Mata Uang Utama 1 (basis, default Rupiah)     'KHR' = Mata Uang Utama 2 (default Peso)
+ * Kurs (setting KursABA) = berapa mata uang 2 untuk 1 mata uang 1 (mis. 0.0035).
+ */
+
+const CACHE = CacheService.getScriptCache();
+
+/** Mengambil sheet berdasarkan nama, membuat error jelas jika tidak ada. */
+function getSheet_(name) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sheet) throw new Error('Sheet "' + name + '" tidak ditemukan. Jalankan Inisialisasi Data terlebih dahulu.');
+  return sheet;
+}
+
+/** Mengubah seluruh baris data sheet menjadi array of object berbasis header baris 1. */
+function sheetToObjects_(name) {
+  const sheet = getSheet_(name);
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  const headers = data[0];
+  const rows = data.slice(1);
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+
+  return rows
+    .map((row, i) => {
+      const obj = { _row: i + 2 };
+      headers.forEach((h, idx) => {
+        let val = row[idx];
+        // Google Sheets otomatis mengubah string tanggal/jam menjadi objek Date.
+        // Normalisasi kembali ke string agar perbandingan (===, >=, <=) konsisten.
+        if (val instanceof Date) {
+          if (/tanggal/i.test(h)) {
+            val = Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+          } else if (/jam/i.test(h)) {
+            val = Utilities.formatDate(val, tz, 'HH:mm:ss');
+          } else {
+            val = Utilities.formatDate(val, tz, 'yyyy-MM-dd HH:mm:ss');
+          }
+        }
+        obj[h] = val;
       });
+      return obj;
+    })
+    .filter(obj => obj[headers[0]] !== '' && obj[headers[0]] !== null);
+}
+
+/**
+ * 🔧 KEAMANAN (formula injection): teks dari user yang diawali = + - @ akan dibaca
+ * Google Sheets sebagai RUMUS. Diberi apostrof di depan supaya tersimpan sebagai teks biasa
+ * (apostrof tidak ikut tampil di sel dan tidak ikut terbaca kembali).
+ * Angka (number) tidak disentuh.
+ */
+function safeCell_(v) {
+  if (typeof v === 'string' && /^[=+\-@]/.test(v)) return "'" + v;
+  return v;
+}
+
+/** Menulis satu baris baru ke sheet sesuai urutan header. */
+function appendRowByHeader_(name, dataObj) {
+  const sheet = getSheet_(name);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const row = headers.map(h => dataObj[h] !== undefined ? safeCell_(dataObj[h]) : '');
+  sheet.appendRow(row);
+  return row;
+}
+
+/** Update satu baris (berdasarkan nomor baris fisik _row) dengan field baru. */
+function updateRowByHeader_(name, rowIndex, dataObj) {
+  const sheet = getSheet_(name);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  headers.forEach((h, idx) => {
+    if (dataObj[h] !== undefined) {
+      sheet.getRange(rowIndex, idx + 1).setValue(safeCell_(dataObj[h]));
     }
-  </script>
+  });
+}
+
+/** Menghapus baris fisik dari sheet. */
+function deleteRow_(name, rowIndex) {
+  getSheet_(name).deleteRow(rowIndex);
+}
+
+// ---------------- PENGATURAN (Settings) ----------------
+
+/**
+ * 🔧 PERBAIKAN: nilai setting SELALU dikembalikan sebagai STRING.
+ * Sebelumnya, pembacaan pertama (tanpa cache) mengembalikan tipe asli sel
+ * (mis. boolean false), sedangkan pembacaan dari cache mengembalikan string 'false'
+ * -> perbandingan seperti `!== 'false'` hasilnya tidak konsisten.
+ */
+function getSetting(key) {
+  const cached = CACHE.get('setting_' + key);
+  if (cached !== null) return cached;
+
+  const sheet = getSheet_('Pengaturan');
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === key) {
+      const v = String(data[i][1]);
+      CACHE.put('setting_' + key, v, 300);
+      return v;
+    }
+  }
+  return null;
+}
+
+function setSetting(key, value) {
+  const sheet = getSheet_('Pengaturan');
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === key) {
+      sheet.getRange(i + 1, 2).setValue(safeCell_(value));
+      CACHE.remove('setting_' + key);
+      return;
+    }
+  }
+  sheet.appendRow([key, safeCell_(value)]);
+  CACHE.remove('setting_' + key);
+}
+
+/** Semua setting, nilainya juga selalu string (konsisten dengan getSetting). */
+function getAllSettings() {
+  const sheet = getSheet_('Pengaturan');
+  const data = sheet.getDataRange().getValues();
+  const obj = {};
+  for (let i = 1; i < data.length; i++) obj[data[i][0]] = String(data[i][1]);
+  return obj;
+}
+
+// ---------------- KURS & MATA UANG ----------------
+
+/**
+ * Kurs = jumlah Peso untuk 1 Rupiah (mis. 0.0035).
+ * 🔧 Tidak ada lagi fallback 4100 diam-diam; kalau kurs belum diisi, langsung error
+ * yang jelas supaya saldo Peso tidak terhitung salah.
+ */
+function getKurs() {
+  const k = Number(getSetting('KursABA'));
+  if (!k || k <= 0) throw new Error('Kurs belum diatur. Isi di menu Pengaturan > Kurs.');
+  return k;
+}
+
+function setKurs(value) {
+  const k = Number(value);
+  if (!k || k <= 0) throw new Error('Kurs harus berupa angka lebih dari 0');
+  setSetting('KursABA', k);
+}
+
+/** Konversi Rupiah <-> Peso memakai kurs saat ini. fromCurrency: 'USD'(=Rupiah) atau 'KHR'(=Peso). */
+function convertCurrency(amount, fromCurrency) {
+  const kurs = getKurs();
+  if (fromCurrency === 'USD') return amount * kurs; // Rupiah -> Peso
+  return amount / kurs; // Peso -> Rupiah
+}
+
+/** Format angka dengan pemisah ribuan manual (tidak bergantung dukungan locale Apps Script). */
+function formatThousands_(n, decimals, thousandSep, decimalSep) {
+  const fixed = Math.abs(Number(n || 0)).toFixed(decimals);
+  const parts = fixed.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, thousandSep);
+  return parts.join(decimalSep);
+}
+
+// ---------------- KONFIGURASI 2 MATA UANG UTAMA ----------------
+//
+// Kode slot di sheet/backend TETAP 'USD' dan 'KHR' (supaya semua file lain nyambung):
+//    slot 'USD' = Mata Uang Utama 1 (basis, setting MataUangUtama, default IDR/Rupiah)
+//    slot 'KHR' = Mata Uang Utama 2 (setting MataUangKedua,  default PHP/Peso)
+// Kurs (KursABA) = jumlah mata uang 2 untuk 1 mata uang 1.
+
+const MU_HALAMAN_ = {
+  dashboard: 'MuDashboard', keuangan: 'MuKeuangan', laundry: 'MuLaundry',
+  dana: 'MuDana', tabungan: 'MuTabungan', arsip: 'MuArsip'
+};
+const MU_DEFAULT_HALAMAN_ = {
+  dashboard: 'USD', keuangan: 'USD', laundry: 'KHR', dana: 'USD', tabungan: 'USD', arsip: 'USD'
+};
+const MU_NOL_DESIMAL_ = ['IDR','JPY','KRW','VND','KHR','CLP','ISK','UGX','XAF','XOF','XPF','PYG','RWF','BIF','DJF','GNF','KMF','VUV'];
+const MU_TIGA_DESIMAL_ = ['BHD','KWD','OMR','JOD','TND','IQD','LYD'];
+const MU_SIMBOL_ = {
+  IDR:'Rp', PHP:'₱', USD:'$', EUR:'€', GBP:'£', JPY:'¥', CNY:'CN¥', KRW:'₩', INR:'₹', THB:'฿',
+  VND:'₫', KHR:'៛', MYR:'RM', SGD:'S$', AUD:'A$', CAD:'CA$', NZD:'NZ$', HKD:'HK$', TWD:'NT$',
+  RUB:'₽', TRY:'₺', ILS:'₪', NGN:'₦', PKR:'Rs', BDT:'৳', LKR:'Rs', SAR:'SR', AED:'AED', CHF:'CHF'
+};
+
+function isKodeMataUang_(c) { return /^[A-Z]{3}$/.test(String(c || '')); }
+
+function getMataUangUtama_() { const v = String(getSetting('MataUangUtama') || 'IDR').toUpperCase(); return isKodeMataUang_(v) ? v : 'IDR'; }
+function getMataUangKedua_() { const v = String(getSetting('MataUangKedua') || 'PHP').toUpperCase(); return isKodeMataUang_(v) ? v : 'PHP'; }
+
+/** Kode ISO (IDR, PHP, ...) dari kode slot 'USD' / 'KHR'. */
+function kodeDariSlot_(slot) { return slot === 'KHR' ? getMataUangKedua_() : getMataUangUtama_(); }
+
+/** Mata uang halaman tertentu: 'USD' (=utama 1) atau 'KHR' (=utama 2). */
+function getMataUangHalaman_(halaman) {
+  const v = getSetting(MU_HALAMAN_[halaman]);
+  return (v === 'KHR' || v === 'USD') ? v : MU_DEFAULT_HALAMAN_[halaman];
+}
+
+/** Konfigurasi lengkap untuk frontend. */
+function getCurrencyConfig() {
+  const halaman = {};
+  Object.keys(MU_HALAMAN_).forEach(h => { halaman[h] = getMataUangHalaman_(h); });
+  return {
+    utama: getMataUangUtama_(),
+    kedua: getMataUangKedua_(),
+    kurs: Number(getSetting('KursABA')) || 0,
+    anggaran: getSetting('MataUangAnggaran') === 'KHR' ? 'KHR' : 'USD',
+    halaman: halaman
+  };
+}
+
+/** Format angka untuk kode ISO apa pun: Rp1.500.000, ₱1,500.00, $1,500.00, dst. */
+function formatMoney_(n, kodeIso) {
+  const v = Number(n || 0);
+  const kode = String(kodeIso || '').toUpperCase();
+  const des = MU_NOL_DESIMAL_.indexOf(kode) !== -1 ? 0 : (MU_TIGA_DESIMAL_.indexOf(kode) !== -1 ? 3 : 2);
+  const idStyle = (kode === 'IDR' || kode === 'VND' || kode === 'EUR');
+  const simbol = MU_SIMBOL_[kode] !== undefined ? MU_SIMBOL_[kode] : (kode + ' ');
+  return (v < 0 ? '-' : '') + simbol + formatThousands_(v, des, idStyle ? '.' : ',', idStyle ? ',' : '.');
+}
+
+/** Format berdasarkan slot: 'USD' = mata uang utama 1, 'KHR' = mata uang utama 2. */
+function formatSlot_(n, slot) { return formatMoney_(n, kodeDariSlot_(slot)); }
+
+/** Nama fungsi lama dipertahankan; artinya kini "mata uang utama 1 / 2" (default Rupiah / Peso). */
+function formatRupiah(n) { return formatSlot_(n, 'USD'); }
+function formatPeso(n) { return formatSlot_(n, 'KHR'); }
+
+// ---------------- ID / NOMOR OTOMATIS ----------------
+
+function generateId_(prefix) {
+  return prefix + '-' + Utilities.getUuid().substring(0, 8).toUpperCase();
+}
+
+/**
+ * Nomor transaksi berurutan format TRX-YYYYMMDD-0001.
+ * Basisnya ANGKA URUT TERTINGGI yang pernah ada hari ini (maxSeq), bukan jumlah baris,
+ * jadi tidak duplikat walau ada transaksi yang dihapus.
+ */
+function generateTransactionNumber_() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const today = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+  const sheet = getSheet_('Transaksi');
+  const lastRow = sheet.getLastRow();
+
+  let maxSeq = 0;
+  if (lastRow > 1) {
+    const nums = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    const prefix = 'TRX-' + today + '-';
+    nums.forEach(r => {
+      const nomor = String(r[0]);
+      if (nomor.indexOf(prefix) === 0) {
+        const seqPart = Number(nomor.substring(prefix.length));
+        if (!isNaN(seqPart) && seqPart > maxSeq) maxSeq = seqPart;
+      }
+    });
+  }
+
+  const seq = String(maxSeq + 1).padStart(4, '0');
+  return 'TRX-' + today + '-' + seq;
+}
+
+function nowParts_() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const now = new Date();
+  return {
+    tanggal: Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
+    jam: Utilities.formatDate(now, tz, 'HH:mm:ss'),
+    hari: Utilities.formatDate(now, tz, 'EEEE'),
+    timestamp: now.toISOString()
+  };
+}
+
+</script>
+<script>
+// ===== Code.gs =====
+/**
+ * CODE.GS
+ * Entry point: membangun menu, membuka sidebar, menyediakan fungsi include()
+ * untuk templating HTML modular, dan inisialisasi struktur Spreadsheet.
+ *
+ * CATATAN PENTING: doGet() TIDAK ADA lagi di file ini -- sudah dipindah ke
+ * API.gs dan sekarang berfungsi sebagai API JSON untuk frontend GitHub Pages,
+ * bukan lagi menampilkan Sidebar HTML. Sidebar HTML tetap bisa diakses dari
+ * dalam Spreadsheet lewat menu "Buka Aplikasi" seperti biasa (pakai showSidebar()).
+ */
+
+/** Dipanggil otomatis saat Spreadsheet dibuka. */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('🏢 Office App')
+    .addItem('Buka Aplikasi', 'showSidebar')
+    .addItem('🔐 Atur PIN Login', 'setupPinFromMenu')
+    .addItem('Inisialisasi Data (sekali saja)', 'initializeSpreadsheet')
+    .addItem('Migrasi: Tambah Kolom Jenis Dana', 'migrateAddJenisDanaColumn')
+    .addItem('Migrasi: Tambah Modul Laundry', 'migrateAddLaundryModule')
+    .addItem('🗓 Aktifkan Arsip Otomatis Bulanan', 'installMonthlyArchiveTrigger')
+    .addSeparator()
+    .addItem('⚠ Reset Total (Hapus & Bangun Ulang)', 'resetAndRebuildSpreadsheet')
+    .addToUi();
+}
+
+/** Menampilkan sidebar utama (HTML Template, bukan popup) -- tetap dipakai dari dalam Spreadsheet. */
+function showSidebar() {
+  const template = HtmlService.createTemplateFromFile('Sidebar');
+  const html = template
+    .evaluate()
+    .setTitle('Office Management')
+    .setWidth(430);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * Menyisipkan konten file HTML lain ke dalam template (modular include).
+ * Dipakai di dalam file HTML: <?!= include('Style'); ?>
+ */
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+/**
+ * Membuat seluruh sheet & header yang dibutuhkan aplikasi jika belum ada.
+ * Aman dijalankan berulang kali (idempotent).
+ */
+function initializeSpreadsheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  const sheets = {
+    'Karyawan': ['ID', 'Foto', 'Nama', 'NomorHP', 'Alamat', 'Jabatan', 'Status', 'TanggalBergabung'],
+    'Absensi': ['ID', 'IDKaryawan', 'Nama', 'Hari', 'Tanggal', 'JamMasuk', 'JamPulang', 'LamaKerja', 'Status', 'Timestamp'],
+    'PemilikDana': ['ID', 'Nama', 'Icon', 'Warna', 'JenisDana', 'ModalAwal', 'MataUangModal', 'ModalAwalUSD', 'SaldoUSD', 'SaldoKHR', 'Status'],
+    'Transaksi': ['NomorTransaksi', 'Tanggal', 'Jam', 'IDPemilik', 'PemilikDana', 'MataUang', 'Nominal', 'SaldoSebelum', 'SaldoSesudah', 'Operator', 'Kategori', 'Keterangan', 'Timestamp'],
+    'LaundryLog': ['ID', 'Tanggal', 'BeratKg', 'Biaya', 'Catatan'],
+    'Pengaturan': ['Key', 'Value'],
+    'Users': ['Username', 'Nama', 'Role', 'Status']
+  };
+
+  Object.keys(sheets).forEach(name => {
+    let sheet = ss.getSheetByName(name);
+    if (!sheet) {
+      sheet = ss.insertSheet(name);
+      sheet.appendRow(sheets[name]);
+      sheet.setFrozenRows(1);
+      sheet.getRange(1, 1, 1, sheets[name].length).setFontWeight('bold').setBackground('#1B4B43').setFontColor('#ffffff');
+    }
+  });
+
+  // 👇 Paksa kolom tanggal/jam jadi Plain Text
+  // biar Google Sheets tidak otomatis ubah jadi objek Date/Time
+  ss.getSheetByName('Absensi').getRange('E:G').setNumberFormat('@');   // Tanggal, JamMasuk, JamPulang
+  ss.getSheetByName('Transaksi').getRange('B:C').setNumberFormat('@'); // Tanggal, Jam
+  ss.getSheetByName('Karyawan').getRange('H:H').setNumberFormat('@'); // TanggalBergabung (bonus, biar konsisten)
+  ss.getSheetByName('LaundryLog').getRange('B:B').setNumberFormat('@'); // Tanggal
+
+  // Default settings jika kosong
+  const defaults = {
+    'NamaPerusahaan': 'Perusahaan Saya',
+    'Logo': '',
+    'Tema': 'light',
+    'KursABA': '0.0035',            // Peso per 1 Rupiah (contoh, cek kurs terkini)
+    'Timezone': 'Asia/Phnom_Penh',
+    'WarnaAplikasi': '#1B4B43',
+    'BudgetBulanan': '6000000',     // Rupiah (contoh)
+    'TargetTabungan': '1500000',    // Rupiah (contoh)
+    'MataUangAnggaran': 'USD',      // slot: USD = mata uang utama 1, KHR = mata uang utama 2 (anggaran harian)
+    'MataUangUtama': 'IDR',         // kode ISO mata uang utama 1 (basis)
+    'MataUangKedua': 'PHP',         // kode ISO mata uang utama 2
+    'MuDashboard': 'USD',           // mata uang tampilan tiap halaman (slot USD / KHR)
+    'MuKeuangan': 'USD',
+    'MuLaundry': 'KHR',
+    'MuDana': 'USD',
+    'MuTabungan': 'USD',
+    'MuArsip': 'USD',
+    'HargaLaundryRiel': '200',      // Peso (contoh)
+    'KapasitasLaundryKg': '13',
+    'TargetFrekuensiLaundryHari': '5',
+    'EstimasiLaundryPerBulan': '6',
+    'BudgetLaundryRiel': '1200',    // Peso (contoh)
+    'LaundryOwnerId': '',
+    'NotifikasiAktif': 'true',
+    'SuaraNotifikasiAktif': 'true'
+  };
+  Object.keys(defaults).forEach(key => {
+    if (getSetting(key) === null) setSetting(key, defaults[key]);
+  });
+
+  try {
+    SpreadsheetApp.getUi().alert('Inisialisasi selesai! Semua sheet & pengaturan default sudah siap.');
+  } catch (e) {
+    Logger.log('Inisialisasi selesai! (dijalankan dari editor, tanpa alert UI)');
+  }
+}
+
+/** Migrasi satu-kali: tambah kolom JenisDana ke sheet PemilikDana yang sudah ada. */
+function migrateAddJenisDanaColumn() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('PemilikDana');
+  if (!sheet) { SpreadsheetApp.getUi().alert('Sheet PemilikDana tidak ditemukan.'); return; }
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (headers.indexOf('JenisDana') !== -1) {
+    SpreadsheetApp.getUi().alert('Kolom JenisDana sudah ada, tidak perlu migrasi ulang.');
+    return;
+  }
+
+  sheet.insertColumnAfter(4);
+  sheet.getRange(1, 5).setValue('JenisDana').setFontWeight('bold').setBackground('#1B4B43').setFontColor('#ffffff');
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const defaults = Array(lastRow - 1).fill(['Pribadi']);
+    sheet.getRange(2, 5, lastRow - 1, 1).setValues(defaults);
+  }
+
+  SpreadsheetApp.getUi().alert('✅ Migrasi selesai! Kolom JenisDana ditambahkan (default: Pribadi). Silakan cek & ubah mana yang seharusnya "Titipan" lewat menu Master Pemilik Dana.');
+}
+
+/** Migrasi satu-kali: tambah sheet LaundryLog + default settings laundry. */
+function migrateAddLaundryModule() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('LaundryLog');
+  if (!sheet) {
+    sheet = ss.insertSheet('LaundryLog');
+    const headers = ['ID', 'Tanggal', 'BeratKg', 'Biaya', 'Catatan'];
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#1B4B43').setFontColor('#ffffff');
+    sheet.getRange('B:B').setNumberFormat('@');
+  }
+
+  const laundryDefaults = {
+    'HargaLaundryRiel': '200', 'KapasitasLaundryKg': '13',
+    'TargetFrekuensiLaundryHari': '5', 'EstimasiLaundryPerBulan': '6',
+    'BudgetLaundryRiel': '1200', 'LaundryOwnerId': ''
+  };
+  Object.keys(laundryDefaults).forEach(key => {
+    if (getSetting(key) === null) setSetting(key, laundryDefaults[key]);
+  });
+
+  SpreadsheetApp.getUi().alert('✅ Modul Laundry siap! Sekarang buka menu Pengaturan Laundry dan pilih sumber dana (Pribadi/Tabungan) untuk laundry.');
+}
+
+/**
+ * Daftar SEMUA kunci setting yang dikenal aplikasi -- dipakai bersama oleh
+ * initializeSpreadsheet() (default) dan resetAndRebuildSpreadsheet() (clear cache).
+ */
+function getSemuaKunciSetting_() {
+  return [
+    'NamaPerusahaan', 'Logo', 'Tema', 'KursABA', 'Timezone', 'WarnaAplikasi',
+    'BudgetBulanan', 'TargetTabungan', 'MataUangAnggaran',
+    'MataUangUtama', 'MataUangKedua',
+    'MuDashboard', 'MuKeuangan', 'MuLaundry', 'MuDana', 'MuTabungan', 'MuArsip',
+    'HargaLaundryRiel', 'KapasitasLaundryKg', 'TargetFrekuensiLaundryHari',
+    'EstimasiLaundryPerBulan', 'BudgetLaundryRiel', 'LaundryOwnerId',
+    'NotifikasiAktif', 'SuaraNotifikasiAktif'
+  ];
+}
+
+/**
+ * RESET TOTAL: menghapus semua sheet aplikasi lalu membangunnya ulang dari nol.
+ * DESTRUKTIF - semua data hilang permanen. Backup otomatis dibuat dulu.
+ */
+function resetAndRebuildSpreadsheet() {
+  const ui = SpreadsheetApp.getUi();
+
+  const confirm1 = ui.alert(
+    '⚠ Reset Total Aplikasi',
+    'Ini akan MENGHAPUS SEMUA DATA (karyawan, absensi, transaksi, pemilik dana, laundry, pengaturan, users) dan membuat ulang sheet kosong dari awal.\n\nCatatan Tabungan Bulanan TIDAK ikut dihapus.\n\nBackup otomatis akan dibuat dulu sebelum menghapus.\n\nYakin mau lanjut?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm1 !== ui.Button.YES) {
+    ui.alert('Dibatalkan. Tidak ada yang diubah.');
+    return;
+  }
+
+  const confirm2 = ui.prompt(
+    'Konfirmasi Terakhir',
+    'Ketik HAPUS (huruf besar semua) untuk melanjutkan reset total:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (confirm2.getSelectedButton() !== ui.Button.OK || confirm2.getResponseText().trim() !== 'HAPUS') {
+    ui.alert('Dibatalkan. Konfirmasi tidak cocok — tidak ada yang diubah.');
+    return;
+  }
+
+  let backupInfo;
+  try {
+    backupInfo = backupSpreadsheet();
+  } catch (e) {
+    const lanjutTanpaBackup = ui.alert(
+      'Backup Gagal',
+      'Gagal membuat backup otomatis: ' + e.message + '\n\nTetap lanjutkan reset TANPA backup?',
+      ui.ButtonSet.YES_NO
+    );
+    if (lanjutTanpaBackup !== ui.Button.YES) {
+      ui.alert('Dibatalkan. Tidak ada yang diubah.');
+      return;
+    }
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Sheet arsip ikut dibersihkan supaya selaras dengan ledger. TabunganBulanan (catatan manual) sengaja TIDAK dihapus.
+  const namaSheetApp = ['Karyawan', 'Absensi', 'PemilikDana', 'Transaksi', 'LaundryLog', 'Pengaturan', 'Users', 'ArsipTransaksi', 'ArsipLaundry', 'RingkasanBulanan'];
+
+  let sheetSementara = ss.getSheetByName('__temp_reset__');
+  if (!sheetSementara) sheetSementara = ss.insertSheet('__temp_reset__');
+
+  namaSheetApp.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (sheet) ss.deleteSheet(sheet);
+  });
+
+  const cacheKeys = getSemuaKunciSetting_().map(k => 'setting_' + k);
+  CACHE.removeAll(cacheKeys);
+
+  initializeSpreadsheet();
+
+  ss.deleteSheet(ss.getSheetByName('__temp_reset__'));
+
+  ui.alert(
+    '✅ Reset Selesai',
+    'Semua sheet (termasuk data Laundry) sudah dihapus dan dibuat ulang kosong.' +
+    (backupInfo ? '\n\nBackup data lama tersimpan di:\n' + backupInfo.name : '\n\n⚠ Tidak ada backup (gagal dibuat).'),
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * ⚡ TRIGGER OTOMATIS: Mengisi tanggal & waktu di Kolom A
+ * Berjalan otomatis begitu ada input di Kolom C (VC Masuk) atau Kolom D (VC Keluar)
+ * HANYA berlaku di sheet "Pengeluaran VC" -- sheet lain tidak terpengaruh.
+ */
+function onEdit(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+
+  if (sheet.getName() !== 'Pengeluaran VC') return;
+
+  var col = e.range.getColumn();
+  var row = e.range.getRow();
+
+  if (row >= 5 && (col === 3 || col === 4)) {
+    var dateCell = sheet.getRange(row, 1);
+
+    if (e.range.getValue() !== '' && dateCell.getValue() === '') {
+      var now = new Date();
+      var formattedDate = Utilities.formatDate(
+        now,
+        SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(),
+        'dd/MM/yyyy HH:mm:ss'
+      );
+      dateCell.setValue(formattedDate);
+    }
+  }
+}
+</script>
+<script>
+// ===== Finance.gs =====
+/**
+ * FINANCE.GS
+ * Sistem Ledger keuangan. Input transaksi menggunakan logika angka:
+ * positif = tambah saldo, negatif = kurang saldo.
+ * Setiap transaksi pada satu mata uang otomatis menyesuaikan mata uang lain
+ * memakai Kurs (per pemilik dana).
+ *
+ * CATATAN MATA UANG: kode 'USD' = Rupiah (mata uang dasar), 'KHR' = Peso.
+ * Nama kolom/field (SaldoUSD, SaldoKHR, dll) sengaja TIDAK diubah supaya
+ * semua file lain tetap nyambung.
+ */
+
+/**
+ * Menambahkan satu transaksi ke ledger untuk seorang pemilik dana.
+ * Dibungkus LockService supaya aman dipakai multi-device/multi-user bersamaan
+ * (mencegah race condition pada saldo & nomor transaksi).
+ *
+ * @param {string} ownerId  ID pemilik dana
+ * @param {string} currency 'USD' (Rupiah) atau 'KHR' (Peso)
+ * @param {number} nominal  boleh negatif (kurangi) atau positif (tambah)
+ * @param {string} kategori
+ * @param {string} keterangan
+ * @param {string} operator nama user yang input
+ */
+function addTransaction(ownerId, currency, nominal, kategori, keterangan, operator) {
+  nominal = Number(nominal);
+  if (!nominal) return { success: false, message: 'Nominal tidak boleh 0' };
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const owners = sheetToObjects_('PemilikDana');
+    const owner = owners.find(o => o.ID === ownerId);
+    if (!owner) return { success: false, message: 'Pemilik dana tidak ditemukan' };
+
+    const kurs = getKurs();
+    const saldoSebelum = currency === 'USD' ? Number(owner.SaldoUSD) : Number(owner.SaldoKHR);
+
+    let saldoUsdBaru, saldoKhrBaru;
+    if (currency === 'USD') {
+      saldoUsdBaru = Number(owner.SaldoUSD) + nominal;
+      saldoKhrBaru = saldoUsdBaru * kurs;
+    } else {
+      saldoKhrBaru = Number(owner.SaldoKHR) + nominal;
+      saldoUsdBaru = saldoKhrBaru / kurs;
+    }
+
+    const saldoSesudah = currency === 'USD' ? saldoUsdBaru : saldoKhrBaru;
+
+    // Simpan saldo baru pada pemilik dana
+    updateRowByHeader_('PemilikDana', owner._row, {
+      SaldoUSD: saldoUsdBaru,
+      SaldoKHR: saldoKhrBaru
+    });
+
+    const { tanggal, jam, timestamp } = nowParts_();
+    const nomorTransaksi = generateTransactionNumber_();
+
+    appendRowByHeader_('Transaksi', {
+      NomorTransaksi: nomorTransaksi,
+      Tanggal: tanggal,
+      Jam: jam,
+      IDPemilik: ownerId,
+      PemilikDana: owner.Nama,
+      MataUang: currency,
+      Nominal: nominal,
+      SaldoSebelum: saldoSebelum,
+      SaldoSesudah: saldoSesudah,
+      Operator: operator || 'System',
+      Kategori: kategori || 'Umum',
+      Keterangan: keterangan || '',
+      Timestamp: timestamp
+    });
+
+    const kondisiSaldo = checkSaldoMerah_();
+
+    return {
+      success: true,
+      nomorTransaksi,
+      naik: nominal > 0,
+      saldoSebelum,
+      saldoSesudah,
+      merahGabungan: kondisiSaldo.merahGabungan,
+      kekuranganGabungan: kondisiSaldo.kekuranganGabungan,
+      merahPribadi: kondisiSaldo.merahPribadi,
+      kekuranganPribadi: kondisiSaldo.kekuranganPribadi
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Mengecek 2 versi Saldo Merah:
+ * - Gabungan: total uang yang benar-benar tersedia (Pribadi+Titipan+Tabungan)
+ *   dibandingkan terhadap total kewajiban Titipan.
+ * - Pribadi : uang milik sendiri (Pribadi+Tabungan, TIDAK termasuk Titipan)
+ *   sudah negatif/tergerus atau belum.
+ */
+function checkSaldoMerah_() {
+  const totalPribadi = getTotalByJenisDana_('Pribadi');
+  const totalTitipan = getTotalByJenisDana_('Titipan');
+  const totalTabungan = getTotalByJenisDana_('Tabungan');
+
+  // Uang yang benar-benar milik saya (TIDAK termasuk Titipan orang lain)
+  const uangMilikSaya = Number((totalPribadi + totalTabungan).toFixed(2));
+
+  // Total seluruh uang yang benar-benar tersedia (semua kategori digabung)
+  const totalTersedia = Number((totalPribadi + totalTitipan + totalTabungan).toFixed(2));
+
+  // GABUNGAN: apakah total uang tersedia cukup menutupi seluruh kewajiban titipan?
+  const merahGabungan = totalTersedia < totalTitipan;
+  const kekuranganGabungan = merahGabungan ? Number((totalTitipan - totalTersedia).toFixed(2)) : 0;
+
+  // PRIBADI: apakah uang milik saya sendiri sudah tergerus/negatif?
+  const merahPribadi = uangMilikSaya < 0;
+  const kekuranganPribadi = merahPribadi ? Number(Math.abs(uangMilikSaya).toFixed(2)) : 0;
+
+  return {
+    merah: merahGabungan, kekurangan: kekuranganGabungan, // kompatibilitas kode lama
+    merahGabungan, kekuranganGabungan,
+    merahPribadi, kekuranganPribadi,
+    totalPribadi, totalTitipan, totalTabungan,
+    uangMilikSaya, totalTersedia
+  };
+}
+
+/** Total kas = jumlah SaldoUSD seluruh pemilik dana ber-JenisDana Tabungan (basis mata uang dasar). */
+function getTotalKasUSD_() {
+  return getTotalByJenisDana_('Tabungan');
+}
+
+/**
+ * Rincian saldo titipan per pemilik dana -- wajib per spec: titipan harus
+ * terlihat per nama, bukan cuma satu angka total.
+ */
+function getTitipanDetail() {
+  const owners = getOwners(false).filter(o => o.JenisDana === 'Titipan');
+  return owners.map(o => ({
+    id: o.ID,
+    nama: o.Nama,
+    icon: o.Icon,
+    warna: o.Warna,
+    saldoUSD: Number(o.SaldoUSD || 0),
+    saldoKHR: Number(o.SaldoKHR || 0),
+    status: o.Status
+  })).sort((a, b) => b.saldoUSD - a.saldoUSD);
+}
+
+function getFinanceSummary() {
+  const owners = getOwners(false);
+  const totalKas = getTotalKasUSD_();   // = Total Tabungan
+  const totalModal = getTotalModalUSD_();
+  // CATATAN: "Total Modal" & "Hak Pribadi" adalah konsep LAMA (sebelum ada
+  // pemisahan Pribadi/Titipan/Tabungan), dipertahankan untuk kompatibilitas
+  // tampilan lama. Untuk angka yang sudah sesuai filosofi baru, pakai
+  // `uangMilikSaya` (Pribadi+Tabungan, tanpa Titipan) dan `totalTersedia`.
+  const hakPribadi = Number((totalKas - totalModal).toFixed(2));
+  const kondisiMerah = checkSaldoMerah_();
+  const kurs = getKurs();
+
+  const totalUSD = owners.reduce((s, o) => s + Number(o.SaldoUSD || 0), 0);
+  const totalKHR = totalUSD * kurs;
+
+  const totalDanaPribadi = getTotalByJenisDana_('Pribadi');
+  const totalDanaTitipan = getTotalByJenisDana_('Titipan');
+  const totalTabungan = getTotalByJenisDana_('Tabungan');
+
+  const transaksi = sheetToObjects_('Transaksi');
+
+  // 🔧 PERBAIKAN: setiap nominal dikonversi dulu ke mata uang dasar (Rupiah) sebelum dijumlah.
+  // Sebelumnya transaksi 'KHR' (Peso) ikut dijumlah mentah ke total, sehingga angkanya salah.
+  const nilaiDasar = transaksi.map(t => {
+    const n = Number(t.Nominal || 0);
+    return t.MataUang === 'USD' ? n : n / kurs;
+  });
+  const totalPemasukan = Number(nilaiDasar.filter(n => n > 0).reduce((s, n) => s + n, 0).toFixed(2));
+  const totalPengeluaran = Number(nilaiDasar.filter(n => n < 0).reduce((s, n) => s + n, 0).toFixed(2));
+
+  const ownersMapped = owners.map(o => ({
+    id: o.ID, nama: o.Nama, icon: o.Icon, warna: o.Warna, jenisDana: o.JenisDana,
+    saldoUSD: Number(o.SaldoUSD), saldoKHR: Number(o.SaldoKHR),
+    modalAwalUSD: Number(o.ModalAwalUSD), status: o.Status
+  }));
+
+  return {
+    saldoUSD: totalUSD,
+    saldoKHR: totalKHR,
+    totalKas,
+    totalModal,
+    hakPribadi,
+    totalDanaPribadi: Number(totalDanaPribadi.toFixed(2)),
+    totalDanaTitipan: Number(totalDanaTitipan.toFixed(2)),
+    totalTabungan: Number(totalTabungan.toFixed(2)),
+    merahGabungan: kondisiMerah.merahGabungan,
+    kekuranganGabungan: kondisiMerah.kekuranganGabungan,
+    merahPribadi: kondisiMerah.merahPribadi,
+    kekuranganPribadi: kondisiMerah.kekuranganPribadi,
+    uangMilikSaya: kondisiMerah.uangMilikSaya,
+    totalTersedia: kondisiMerah.totalTersedia,
+    jumlahPemilik: owners.length,
+    jumlahTransaksi: transaksi.length,
+    totalPemasukan,
+    totalPengeluaran,
+    kurs,
+    owners: ownersMapped,
+    titipanDetail: getTitipanDetail()
+  };
+}
+
+/** Jumlah SaldoUSD (mata uang dasar) seluruh owner berdasarkan JenisDana tertentu. */
+function getTotalByJenisDana_(jenis) {
+  const owners = getOwners(false);
+  return owners.filter(o => o.JenisDana === jenis).reduce((sum, o) => sum + Number(o.SaldoUSD || 0), 0);
+}
+
+function getTransactions(filter) {
+  filter = filter || {};
+  let list = sheetToObjects_('Transaksi').reverse();
+  list = filterByPeriode_(list, 'Tanggal', filter.periode || 'bulan', filter.customStart, filter.customEnd);
+
+  if (filter.ownerId) list = list.filter(t => t.IDPemilik === filter.ownerId);
+  if (filter.mataUang) list = list.filter(t => t.MataUang === filter.mataUang);
+  if (filter.kategori) list = list.filter(t => t.Kategori === filter.kategori);
+  if (filter.nomorTransaksi) {
+    const term = filter.nomorTransaksi.toLowerCase();
+    list = list.filter(t => String(t.NomorTransaksi).toLowerCase().includes(term));
+  }
+  return list;
+}
+
+/**
+ * Mata uang anggaran harian: 'USD' = Rupiah (default), 'KHR' = Peso.
+ * Anggaran bulanan, target tabungan, limit harian, pengeluaran hari ini, dan proyeksi
+ * semuanya dihitung dalam mata uang ini. Transaksi berbeda mata uang dikonversi dengan kurs.
+ */
+function getBudgetCurrency_() {
+  return getSetting('MataUangAnggaran') === 'KHR' ? 'KHR' : 'USD';
+}
+
+/** Nilai transaksi (selalu positif) dalam mata uang anggaran. Kurs = Peso per 1 Rupiah. */
+function toBudgetAmount_(t, kurs, cur) {
+  const n = Math.abs(Number(t.Nominal));
+  if (t.MataUang === cur) return n;
+  return cur === 'KHR' ? n * kurs : n / kurs;
+}
+
+function formatBudget_(n, cur) {
+  return formatSlot_(n, cur);
+}
+
+/**
+ * Menghitung status budget harian HANYA dari pengeluaran dana Pribadi + Tabungan.
+ * Dana Titipan sengaja dikecualikan karena itu bukan uang milik saya sendiri.
+ * Limit Harian = (AnggaranBulanan - TargetTabungan) / 30, dalam mata uang anggaran (Rupiah atau Peso).
+ */
+function getBudgetStatus() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const kurs = getKurs();
+  const cur = getBudgetCurrency_();
+
+  const anggaranBulanan = Number(getSetting('BudgetBulanan')) || 0;
+  const targetTabungan = Number(getSetting('TargetTabungan')) || 0;
+  const limitHarian = Number(((anggaranBulanan - targetTabungan) / 30).toFixed(2));
+
+  const owners = sheetToObjects_('PemilikDana');
+  const jenisById = {};
+  owners.forEach(o => { jenisById[o.ID] = o.JenisDana; });
+
+  const transaksiHariIni = sheetToObjects_('Transaksi').filter(t =>
+    t.Tanggal === today &&
+    Number(t.Nominal) < 0 &&
+    (jenisById[t.IDPemilik] === 'Pribadi' || jenisById[t.IDPemilik] === 'Tabungan')
+  );
+
+  const toBudget_ = (t) => toBudgetAmount_(t, kurs, cur);
+
+  // Breakdown per kategori dana
+  const transaksiPribadi = transaksiHariIni.filter(t => jenisById[t.IDPemilik] === 'Pribadi');
+  const transaksiTabungan = transaksiHariIni.filter(t => jenisById[t.IDPemilik] === 'Tabungan');
+
+  const pengeluaranPribadi = Number(transaksiPribadi.reduce((s, t) => s + toBudget_(t), 0).toFixed(2));
+  const pengeluaranTabungan = Number(transaksiTabungan.reduce((s, t) => s + toBudget_(t), 0).toFixed(2));
+  const pengeluaranHariIni = Number((pengeluaranPribadi + pengeluaranTabungan).toFixed(2));
+
+  const melebihiLimit = limitHarian > 0 && pengeluaranHariIni > limitHarian;
+  const kelebihan = melebihiLimit ? Number((pengeluaranHariIni - limitHarian).toFixed(2)) : 0;
+  const sisaHarian = Number((limitHarian - pengeluaranHariIni).toFixed(2));
+
+  // Breakdown per kategori transaksi (Operasional, Gaji, dll) -- untuk drill-down lebih detail
+  const perKategori = {};
+  transaksiHariIni.forEach(t => {
+    const kat = t.Kategori || 'Umum';
+    if (!perKategori[kat]) perKategori[kat] = 0;
+    perKategori[kat] += toBudget_(t);
+  });
+  const rincianKategori = Object.keys(perKategori)
+    .map(kat => ({ kategori: kat, total: Number(perKategori[kat].toFixed(2)) }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    mataUang: cur,
+    anggaranBulanan, targetTabungan, limitHarian,
+    pengeluaranHariIni, sisaHarian, melebihiLimit, kelebihan,
+    pengeluaranPribadi,
+    pengeluaranTabungan,
+    jumlahTransaksiPribadi: transaksiPribadi.length,
+    jumlahTransaksiTabungan: transaksiTabungan.length,
+    rincianKategori
+  };
+}
+
+/**
+ * Proyeksi tabungan akhir bulan berdasarkan pola pengeluaran Pribadi+Tabungan
+ * sejauh ini (Titipan TIDAK ikut dihitung -- bukan uang milik sendiri).
+ * Target Tabungan diamankan duluan; laundry & kebutuhan rutin lain otomatis
+ * ikut terhitung karena sudah tercatat sebagai Transaksi.
+ */
+function getSavingsProjection() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const now = new Date();
+  const anggaranBulanan = Number(getSetting('BudgetBulanan')) || 0;
+  const targetTabungan = Number(getSetting('TargetTabungan')) || 0;
+  const kurs = getKurs();
+  const cur = getBudgetCurrency_();
+
+  const nowStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  const [ny, nm, nd] = nowStr.split('-').map(Number);
+  const hariBerjalan = nd;
+  const hariDalamBulan = new Date(ny, nm, 0).getDate();
+  const startBulan = Utilities.formatDate(new Date(ny, nm - 1, 1), tz, 'yyyy-MM-dd');
+
+  const owners = sheetToObjects_('PemilikDana');
+  const jenisById = {};
+  owners.forEach(o => { jenisById[o.ID] = o.JenisDana; });
+
+  const transaksiBulanIni = sheetToObjects_('Transaksi').filter(t =>
+    t.Tanggal >= startBulan && t.Tanggal <= nowStr &&
+    Number(t.Nominal) < 0 &&
+    (jenisById[t.IDPemilik] === 'Pribadi' || jenisById[t.IDPemilik] === 'Tabungan')
+  );
+
+  const totalPengeluaranUSD = transaksiBulanIni.reduce((s, t) => s + toBudgetAmount_(t, kurs, cur), 0); // dalam mata uang anggaran
+
+  const rataRataHarian = hariBerjalan > 0 ? totalPengeluaranUSD / hariBerjalan : 0;
+  const proyeksiPengeluaranBulan = Number((rataRataHarian * hariDalamBulan).toFixed(2));
+  const proyeksiTabungan = Number((anggaranBulanan - proyeksiPengeluaranBulan).toFixed(2));
+  const targetTerancam = proyeksiTabungan < targetTabungan;
+  const kekuranganTarget = targetTerancam ? Number((targetTabungan - proyeksiTabungan).toFixed(2)) : 0;
+
+  return {
+    mataUang: cur,
+    anggaranBulanan, targetTabungan,
+    totalPengeluaranBulanIni: Number(totalPengeluaranUSD.toFixed(2)),
+    hariBerjalan, hariDalamBulan,
+    proyeksiPengeluaranBulan, proyeksiTabungan,
+    targetTerancam, kekuranganTarget
+  };
+}
+
+/**
+ * Menghapus satu transaksi dari ledger DAN membalikkan efeknya ke saldo pemilik dana.
+ * Kalau ownernya sudah dihapus duluan, transaksi tetap dihapus tapi saldo tidak bisa di-reverse (diberi peringatan).
+ */
+function deleteTransaction(nomorTransaksi) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const list = sheetToObjects_('Transaksi');
+    const trx = list.find(t => t.NomorTransaksi === nomorTransaksi);
+    if (!trx) return { success: false, message: 'Transaksi tidak ditemukan' };
+
+    const owners = sheetToObjects_('PemilikDana');
+    const owner = owners.find(o => o.ID === trx.IDPemilik);
+
+    let ownerTidakDitemukan = false;
+
+    if (owner) {
+      const kurs = getKurs();
+      let saldoUsdBaru, saldoKhrBaru;
+
+      // Balikkan nominal transaksi dari mata uang aslinya, lalu sync mata uang satunya pakai kurs saat ini
+      if (trx.MataUang === 'USD') {
+        saldoUsdBaru = Number(owner.SaldoUSD) - Number(trx.Nominal);
+        saldoKhrBaru = saldoUsdBaru * kurs;
+      } else {
+        saldoKhrBaru = Number(owner.SaldoKHR) - Number(trx.Nominal);
+        saldoUsdBaru = saldoKhrBaru / kurs;
+      }
+
+      updateRowByHeader_('PemilikDana', owner._row, {
+        SaldoUSD: saldoUsdBaru,
+        SaldoKHR: saldoKhrBaru
+      });
+    } else {
+      ownerTidakDitemukan = true;
+    }
+
+    deleteRow_('Transaksi', trx._row);
+
+    return {
+      success: true,
+      ownerTidakDitemukan,
+      message: ownerTidakDitemukan
+        ? 'Transaksi dihapus, tapi pemilik dana sudah tidak ada sehingga saldo tidak bisa di-reverse.'
+        : 'Transaksi dihapus dan saldo sudah disesuaikan.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Menggabungkan SEMUA sumber peringatan jadi satu status global,
+ * dipakai oleh banner permanen yang muncul di semua halaman.
+ */
+function getGlobalWarningStatus() {
+  const notifAktif = getSetting('NotifikasiAktif') !== 'false';   // default: aktif kalau belum pernah diset
+  const suaraAktif = getSetting('SuaraNotifikasiAktif') !== 'false';
+
+  if (!notifAktif) {
+    return { ada: false, tingkat: 'aman', items: [], notifAktif: false, suaraAktif };
+  }
+
+  const kondisi = checkSaldoMerah_();
+  const budget = getBudgetStatus();
+  const laundry = getLaundryStatus();
+  const proyeksi = getSavingsProjection();
+
+  const items = [];
+  if (kondisi.merahGabungan) items.push({ level: 'bahaya', title: 'Saldo Merah (Gabungan)', detail: 'Kekurangan: ' + formatRupiah(kondisi.kekuranganGabungan) });
+  if (kondisi.merahPribadi) items.push({ level: 'bahaya', title: 'Saldo Merah (Pribadi)', detail: 'Kekurangan: ' + formatRupiah(kondisi.kekuranganPribadi) });
+  if (budget.melebihiLimit) items.push({ level: 'perhatian', title: 'Limit Harian Terlampaui', detail: 'Kelebihan: ' + formatBudget_(budget.kelebihan, budget.mataUang) });
+  if (laundry.budgetTerlampaui) items.push({ level: 'bahaya', title: 'Budget Laundry Terlampaui', detail: 'Kelebihan: ' + formatPeso(laundry.kelebihanBudget) });
+  if (proyeksi.targetTerancam) items.push({ level: 'perhatian', title: 'Target Tabungan Terancam', detail: 'Kekurangan proyeksi: ' + formatBudget_(proyeksi.kekuranganTarget, proyeksi.mataUang) });
+
+  const adaBahaya = items.some(i => i.level === 'bahaya');
+  const adaPerhatian = items.some(i => i.level === 'perhatian');
+
+  return {
+    ada: items.length > 0,
+    tingkat: adaBahaya ? 'bahaya' : (adaPerhatian ? 'perhatian' : 'aman'),
+    items, notifAktif, suaraAktif
+  };
+}
+
+</script>
+<script>
+// ===== Owner.gs =====
+/**
+ * OWNER.GS
+ * Master Pemilik Dana: tambah/edit/hapus/aktif/nonaktif pemilik.
+ * Setiap pemilik memiliki dua saldo (Ledger per-owner):
+ *   SaldoUSD = saldo Rupiah (mata uang dasar)    SaldoKHR = saldo Peso
+ * Kode 'USD'/'KHR' tetap dipakai di sheet/backend, artinya 'USD' = Rupiah, 'KHR' = Peso.
+ */
+
+function getOwners(onlyActive) {
+  let list = sheetToObjects_('PemilikDana');
+  if (onlyActive) list = list.filter(o => o.Status === 'Aktif');
+  return list;
+}
+
+function addOwner(data) {
+  if (!data || !data.nama) return { success: false, message: 'Nama wajib diisi' };
+  const id = generateId_('OWN');
+  const modalAwal = Number(data.modalAwal) || 0;
+  const currency = data.mataUangModal === 'KHR' ? 'KHR' : 'USD';
+  const modalAwalUSD = currency === 'USD' ? modalAwal : convertCurrency(modalAwal, 'KHR');
+  appendRowByHeader_('PemilikDana', {
+    ID: id,
+    Nama: data.nama,
+    Icon: data.icon || '💼',
+    Warna: data.warna || '#1B4B43',
+    JenisDana: data.jenisDana || 'Pribadi',
+    ModalAwal: modalAwal,
+    MataUangModal: currency,
+    ModalAwalUSD: modalAwalUSD,
+    SaldoUSD: currency === 'USD' ? modalAwal : convertCurrency(modalAwal, 'KHR'),
+    SaldoKHR: currency === 'KHR' ? modalAwal : convertCurrency(modalAwal, 'USD'),
+    Status: 'Aktif'
+  });
+  return { success: true, id };
+}
+
+function updateOwner(id, data) {
+  const list = sheetToObjects_('PemilikDana');
+  const owner = list.find(o => o.ID === id);
+  if (!owner) return { success: false, message: 'Pemilik tidak ditemukan' };
+  updateRowByHeader_('PemilikDana', owner._row, {
+    Nama: data.nama || owner.Nama,
+    Icon: data.icon || owner.Icon,
+    Warna: data.warna || owner.Warna,
+    JenisDana: data.jenisDana || owner.JenisDana
+  });
+  return { success: true };
+}
+
+function deleteOwner(id) {
+  const list = sheetToObjects_('PemilikDana');
+  const owner = list.find(o => o.ID === id);
+  if (!owner) return { success: false, message: 'Pemilik tidak ditemukan' };
+  deleteRow_('PemilikDana', owner._row);
+  return { success: true };
+}
+
+function setOwnerStatus(id, status) {
+  const list = sheetToObjects_('PemilikDana');
+  const owner = list.find(o => o.ID === id);
+  if (!owner) return { success: false, message: 'Pemilik tidak ditemukan' };
+  updateRowByHeader_('PemilikDana', owner._row, { Status: status });
+  return { success: true };
+}
+
+/** Total modal awal seluruh pemilik (basis Rupiah). */
+function getTotalModalUSD_() {
+  const owners = getOwners(false);
+  return owners.reduce((sum, o) => sum + Number(o.ModalAwalUSD || 0), 0);
+}
+
+</script>
+<script>
+// ===== Laundry.gs =====
+/**
+ * LAUNDRY.GS
+ * Modul Laundry — terintegrasi penuh dengan sistem keuangan.
+ * Setiap laundry otomatis tercatat sebagai transaksi pengeluaran (Kategori: Laundry)
+ * pada dana Pribadi/Tabungan yang dipilih di Pengaturan (TIDAK PERNAH dari Titipan).
+ */
+
+function getLaundrySettings() {
+  const owners = getOwners(true).filter(o => o.JenisDana !== 'Titipan');
+  return {
+    hargaLaundryRiel: Number(getSetting('HargaLaundryRiel')) || 200,
+    kapasitasKg: Number(getSetting('KapasitasLaundryKg')) || 13,
+    targetFrekuensiHari: Number(getSetting('TargetFrekuensiLaundryHari')) || 5,
+    estimasiPerBulan: Number(getSetting('EstimasiLaundryPerBulan')) || 6,
+    budgetLaundryRiel: Number(getSetting('BudgetLaundryRiel')) || 1200,
+    laundryOwnerId: getSetting('LaundryOwnerId') || '',
+    opsiOwner: owners.map(o => ({ id: o.ID, nama: o.Nama, jenisDana: o.JenisDana }))
+  };
+}
+
+function saveLaundrySettings(data) {
+  if (data.hargaLaundryRiel !== undefined) setSetting('HargaLaundryRiel', Number(data.hargaLaundryRiel));
+  if (data.kapasitasKg !== undefined) setSetting('KapasitasLaundryKg', Number(data.kapasitasKg));
+  if (data.budgetLaundryRiel !== undefined) setSetting('BudgetLaundryRiel', Number(data.budgetLaundryRiel));
+  if (data.laundryOwnerId !== undefined) setSetting('LaundryOwnerId', data.laundryOwnerId);
+
+  let target = Number(getSetting('TargetFrekuensiLaundryHari')) || 5;
+  if (data.targetFrekuensiHari !== undefined) {
+    target = Number(data.targetFrekuensiHari) || 5;
+    setSetting('TargetFrekuensiLaundryHari', target);
+  }
+  // Estimasi per bulan SELALU dihitung otomatis, bukan input manual.
+  const estimasi = Math.round(30 / target);
+  setSetting('EstimasiLaundryPerBulan', estimasi);
+
+  return { success: true, estimasiPerBulan: estimasi };
+}
+
+/** Selisih hari antara dua tanggal string 'yyyy-MM-dd'. */
+function hitungSelisihHari_(tglAwal, tglAkhir) {
+  const [y1, m1, d1] = tglAwal.split('-').map(Number);
+  const [y2, m2, d2] = tglAkhir.split('-').map(Number);
+  const t1 = new Date(y1, m1 - 1, d1).getTime();
+  const t2 = new Date(y2, m2 - 1, d2).getTime();
+  return Math.round((t2 - t1) / (1000 * 60 * 60 * 24));
+}
+
+function addLaundryLog(beratKg, biayaRiel, catatan) {
+  const settings = getLaundrySettings();
+  if (!settings.laundryOwnerId) {
+    return { success: false, message: 'Pilih dulu sumber dana Laundry di Pengaturan Laundry (Pribadi/Tabungan).' };
+  }
+
+  const { tanggal } = nowParts_();
+  const biaya = Number(biayaRiel) || settings.hargaLaundryRiel;
+
+  const semuaLog = sheetToObjects_('LaundryLog').sort((a, b) => (a.Tanggal < b.Tanggal ? -1 : 1));
+  let peringatanFrekuensi = null;
+  if (semuaLog.length) {
+    const last = semuaLog[semuaLog.length - 1];
+    const selisih = hitungSelisihHari_(last.Tanggal, tanggal);
+    if (selisih < settings.targetFrekuensiHari) {
+      peringatanFrekuensi = 'Laundry dilakukan ' + (settings.targetFrekuensiHari - selisih) + ' hari lebih cepat dari jadwal target.';
+    }
+  }
+
+  // 🔧 Transaksi dicatat DULU. Kalau gagal (pemilik dana terhapus, lock timeout, dll),
+  // log laundry tidak ikut tersimpan, jadi modul Laundry dan Keuangan tidak selisih.
+  // Mata uang 'KHR' = Peso.
+  const trx = addTransaction(settings.laundryOwnerId, 'KHR', -biaya, 'Laundry', catatan || 'Laundry', 'Sistem');
+  if (!trx || !trx.success) {
+    return { success: false, message: (trx && trx.message) || 'Gagal mencatat transaksi laundry' };
+  }
+
+  appendRowByHeader_('LaundryLog', {
+    ID: generateId_('LDR'),
+    Tanggal: tanggal,
+    BeratKg: Number(beratKg) || 0,
+    Biaya: biaya,
+    Catatan: catatan || ''
+  });
+
+  return {
+    success: true,
+    peringatanFrekuensi,
+    merahGabungan: trx.merahGabungan,
+    merahPribadi: trx.merahPribadi
+  };
+}
+
+function getLaundryStatus() {
+  const settings = getLaundrySettings();
+  const list = filterByPeriode_(sheetToObjects_('LaundryLog'), 'Tanggal', 'bulan');
+
+  const jumlahLaundry = list.length;
+  const totalBiaya = Number(list.reduce((s, l) => s + Number(l.Biaya || 0), 0).toFixed(2));
+  const sisaLaundry = Math.max(0, settings.estimasiPerBulan - jumlahLaundry);
+  const sisaBudget = Number((settings.budgetLaundryRiel - totalBiaya).toFixed(2)); // sen Peso tidak boleh hilang
+  const budgetTerlampaui = totalBiaya > settings.budgetLaundryRiel;
+  const kelebihanBudget = budgetTerlampaui ? Number((totalBiaya - settings.budgetLaundryRiel).toFixed(2)) : 0;
+
+  const sorted = list.slice().sort((a, b) => (a.Tanggal < b.Tanggal ? -1 : 1));
+  const laundryTerakhir = sorted.length ? sorted[sorted.length - 1].Tanggal : null;
+
+  let jadwalBerikutnya = null;
+  if (laundryTerakhir) {
+    const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+    const [y, m, d] = laundryTerakhir.split('-').map(Number);
+    const next = new Date(y, m - 1, d + settings.targetFrekuensiHari);
+    jadwalBerikutnya = Utilities.formatDate(next, tz, 'yyyy-MM-dd');
+  }
+
+  let status = 'aman';
+  if (budgetTerlampaui) status = 'bahaya';
+  else if (totalBiaya >= settings.budgetLaundryRiel * 0.8 || jumlahLaundry > settings.estimasiPerBulan) status = 'perhatian';
+
+  return {
+    hargaLaundryRiel: settings.hargaLaundryRiel,
+    estimasiPerBulan: settings.estimasiPerBulan,
+    budgetLaundryRiel: settings.budgetLaundryRiel,
+    jumlahLaundry, totalBiaya, sisaLaundry, sisaBudget, budgetTerlampaui, kelebihanBudget,
+    laundryTerakhir, jadwalBerikutnya, status,
+    riwayat: sorted.slice().reverse()
+  };
+}
+</script>
+<script>
+// ===== Dashboard.gs =====
+/**
+ * DASHBOARD.GS
+ * Mengumpulkan data ringkasan & grafik untuk halaman Dashboard utama.
+ *
+ * CATATAN MATA UANG: 'USD' = Rupiah (mata uang dasar), 'KHR' = Peso.
+ * Nama field (saldoUSD, saldoKHR, dll) sengaja tidak diubah.
+ */
+
+function getDashboardData() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  const employees = sheetToObjects_('Karyawan');
+  const activeEmployees = employees.filter(e => e.Status === 'Aktif');
+
+  const attendanceToday = sheetToObjects_('Absensi').filter(a => a.Tanggal === today);
+  const hadirHariIni = attendanceToday.filter(a => a.Status === 'Hadir' || a.Status === 'Terlambat').length;
+  const tidakHadir = activeEmployees.length - hadirHariIni;
+
+  const finance = getFinanceSummary();
+
+  return {
+    perusahaan: {
+      nama: getSetting('NamaPerusahaan'),
+      logo: getSetting('Logo'),
+      tema: getSetting('Tema')
+    },
+    totalKaryawan: activeEmployees.length,
+    hadirHariIni,
+    tidakHadir: tidakHadir < 0 ? 0 : tidakHadir,
+    totalKas: finance.totalKas,
+    totalModal: finance.totalModal,
+    hakPribadi: finance.hakPribadi,
+    totalDanaPribadi: finance.totalDanaPribadi,
+    totalDanaTitipan: finance.totalDanaTitipan,
+    totalTabungan: finance.totalTabungan,
+    merahGabungan: finance.merahGabungan,
+    kekuranganGabungan: finance.kekuranganGabungan,
+    merahPribadi: finance.merahPribadi,
+    kekuranganPribadi: finance.kekuranganPribadi,
+    saldoUSD: finance.saldoUSD,
+    saldoKHR: finance.saldoKHR,
+    owners: finance.owners,
+    kurs: finance.kurs,
+
+    // field dari logika Saldo Merah versi diperbaiki
+    uangMilikSaya: finance.uangMilikSaya,
+    totalTersedia: finance.totalTersedia,
+    titipanDetail: finance.titipanDetail
+  };
+}
+
+/** Data grafik kehadiran 7 hari terakhir. */
+function getAttendanceChartData() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const list = sheetToObjects_('Absensi');
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(Utilities.formatDate(d, tz, 'yyyy-MM-dd'));
+  }
+  return days.map(day => {
+    const dayList = list.filter(a => a.Tanggal === day);
+    return {
+      tanggal: day,
+      hadir: dayList.filter(a => a.Status === 'Hadir' || a.Status === 'Terlambat').length,
+      izin: dayList.filter(a => a.Status === 'Izin').length,
+      sakit: dayList.filter(a => a.Status === 'Sakit').length,
+      alpha: dayList.filter(a => a.Status === 'Alpha').length
+    };
+  });
+}
+
+/**
+ * Data grafik pemasukan & pengeluaran harian, 14 hari terakhir (dalam mata uang utama 1).
+ * Dana Titipan tidak dihitung. Membaca transaksi aktif + arsip supaya hari-hari di awal bulan tetap lengkap.
+ * Pengeluaran dikembalikan sebagai angka positif (besarnya).
+ */
+function getIncomeExpenseChartData() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const kurs = getKurs();
+  const jenis = pdJenisMap_();
+  const hari = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    hari.push(Utilities.formatDate(d, tz, 'yyyy-MM-dd'));
+  }
+  const peta = {};
+  hari.forEach(h => { peta[h] = { tanggal: h, masuk: 0, keluar: 0 }; });
+  getAllTransactions_().forEach(t => {
+    if (!peta[t.Tanggal] || jenis[t.IDPemilik] === 'Titipan') return;
+    const n = Number(t.Nominal || 0) / (t.MataUang === 'USD' ? 1 : kurs);
+    if (n > 0) peta[t.Tanggal].masuk += n; else peta[t.Tanggal].keluar += -n;
+  });
+  return hari.map(h => ({
+    tanggal: h,
+    masuk: Number(peta[h].masuk.toFixed(2)),
+    keluar: Number(peta[h].keluar.toFixed(2))
+  }));
+}
+
+/** Data grafik keuangan (saldo kumulatif) 30 hari terakhir, dalam Rupiah. */
+function getFinanceChartData() {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const batasAwal = Utilities.formatDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), tz, 'yyyy-MM-dd');
+  const kurs = getKurs(); // dibaca sekali, bukan per transaksi
+
+  const transaksi = sheetToObjects_('Transaksi').filter(t => t.Tanggal >= batasAwal);
+  const byDate = {};
+  transaksi.forEach(t => {
+    if (!byDate[t.Tanggal]) byDate[t.Tanggal] = 0;
+    byDate[t.Tanggal] += t.MataUang === 'USD' ? Number(t.Nominal) : Number(t.Nominal) / kurs;
+  });
+  const dates = Object.keys(byDate).sort();
+  let running = 0;
+  return dates.map(d => {
+    running += byDate[d];
+    return { tanggal: d, saldo: Number(running.toFixed(2)) };
+  });
+}
+
+/** Pie chart proporsi dana per pemilik. */
+function getOwnerPieChartData(jenisDana) {
+  const owners = getOwners(true).filter(o => o.JenisDana === jenisDana);
+  return owners.map(o => ({ nama: o.Nama, warna: o.Warna, saldoUSD: Number(o.SaldoUSD) }));
+}
+
+</script>
+<script>
+// ===== Report.gs =====
+/**
+ * REPORT.GS
+ * Laporan Absensi & Keuangan dengan filter periode, serta ekspor PDF/Excel.
+ *
+ * Perubahan: total pemasukan/pengeluaran dikonversi ke mata uang dasar (Rupiah)
+ * dulu sebelum dijumlah, dan kolom MataUang pada hasil ekspor diganti
+ * 'USD' -> 'Rupiah', 'KHR' -> 'Peso' supaya mudah dibaca.
+ */
+
+function getAttendanceReport(periode, customStart, customEnd) {
+  const list = getAttendance(periode, customStart, customEnd);
+  const summary = {
+    Hadir: 0, Terlambat: 0, Izin: 0, Sakit: 0, Alpha: 0
+  };
+  list.forEach(a => { if (summary[a.Status] !== undefined) summary[a.Status]++; });
+  return { data: list, summary };
+}
+
+function getFinanceReport(periode, customStart, customEnd) {
+  // Membaca transaksi aktif + arsip bulanan, supaya bulan yang sudah diarsipkan tetap bisa dilaporkan.
+  const list = filterByPeriode_(getAllTransactions_(), 'Tanggal', periode, customStart, customEnd);
+  const kurs = getKurs();
+  const jenis = pdJenisMap_();
+
+  // Dana Titipan tampil di daftar, tetapi TIDAK ikut dihitung di total pemasukan/pengeluaran.
+  const dihitung = list.filter(t => jenis[t.IDPemilik] !== 'Titipan');
+  const nilaiDasar = dihitung.map(t => {
+    const n = Number(t.Nominal || 0);
+    return t.MataUang === 'USD' ? n : n / kurs;
+  });
+  const pemasukan = Number(nilaiDasar.filter(n => n > 0).reduce((s, n) => s + n, 0).toFixed(2));
+  const pengeluaran = Number(nilaiDasar.filter(n => n < 0).reduce((s, n) => s + n, 0).toFixed(2));
+
+  return {
+    data: list,
+    totalTransaksi: list.length,
+    jumlahTitipan: list.length - dihitung.length,
+    totalPemasukan: pemasukan,
+    totalPengeluaran: pengeluaran,
+    balance: Number((pemasukan + pengeluaran).toFixed(2))
+  };
+}
+
+/** Label mata uang untuk hasil ekspor. */
+function labelMataUang_(kode) {
+  return (kode === 'USD' || kode === 'KHR') ? kodeDariSlot_(kode) : kode;
+}
+
+/** Baris data ekspor dari satu record laporan. */
+function barisEkspor_(r, headers) {
+  return headers.map(h => h === 'MataUang' ? labelMataUang_(r[h]) : r[h]);
+}
+
+/**
+ * Membuat file PDF dari data laporan (memakai Sheet sementara -> export as PDF)
+ * dan menyimpannya ke Google Drive, mengembalikan URL unduhan.
+ */
+function exportReportToPDF(jenisLaporan, periode, customStart, customEnd) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tempName = 'TempExport_' + new Date().getTime();
+  const tempSheet = ss.insertSheet(tempName);
+
+  try {
+    let data, headers;
+    if (jenisLaporan === 'absensi') {
+      const report = getAttendanceReport(periode, customStart, customEnd);
+      headers = ['Nama', 'Hari', 'Tanggal', 'JamMasuk', 'JamPulang', 'LamaKerja', 'Status'];
+      data = report.data.map(r => barisEkspor_(r, headers));
+    } else {
+      const report = getFinanceReport(periode, customStart, customEnd);
+      headers = ['NomorTransaksi', 'Tanggal', 'PemilikDana', 'MataUang', 'Nominal', 'SaldoSesudah', 'Kategori', 'Keterangan'];
+      data = report.data.map(r => barisEkspor_(r, headers));
+    }
+
+    tempSheet.appendRow(headers);
+    if (data.length) tempSheet.getRange(2, 1, data.length, headers.length).setValues(data);
+    tempSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    SpreadsheetApp.flush();
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() +
+      '/export?format=pdf&gid=' + tempSheet.getSheetId() +
+      '&portrait=false&size=A4&fitw=true';
+
+    const token = ScriptApp.getOAuthToken();
+    const response = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    const pdfFile = DriveApp.createFile(response.getBlob().setName(jenisLaporan + '_' + periode + '.pdf'));
+
+    return { success: true, url: pdfFile.getUrl() };
+  } finally {
+    // sheet sementara selalu dihapus, walau ada error di tengah proses
+    ss.deleteSheet(tempSheet);
+  }
+}
+
+/** Ekspor laporan ke file Excel (Google Sheet baru -> convert xlsx). */
+function exportReportToExcel(jenisLaporan, periode, customStart, customEnd) {
+  const newSs = SpreadsheetApp.create('Export_' + jenisLaporan + '_' + new Date().getTime());
+  const sheet = newSs.getSheets()[0];
+
+  let data, headers;
+  if (jenisLaporan === 'absensi') {
+    const report = getAttendanceReport(periode, customStart, customEnd);
+    headers = ['Nama', 'Hari', 'Tanggal', 'JamMasuk', 'JamPulang', 'LamaKerja', 'Status'];
+    data = report.data.map(r => barisEkspor_(r, headers));
+  } else {
+    const report = getFinanceReport(periode, customStart, customEnd);
+    headers = ['NomorTransaksi', 'Tanggal', 'PemilikDana', 'MataUang', 'Nominal', 'SaldoSesudah', 'Kategori', 'Keterangan'];
+    data = report.data.map(r => barisEkspor_(r, headers));
+  }
+
+  sheet.appendRow(headers);
+  if (data.length) sheet.getRange(2, 1, data.length, headers.length).setValues(data);
+  SpreadsheetApp.flush();
+
+  const url = 'https://docs.google.com/spreadsheets/d/' + newSs.getId() + '/export?format=xlsx';
+  const token = ScriptApp.getOAuthToken();
+  const response = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  const file = DriveApp.createFile(response.getBlob().setName(jenisLaporan + '_' + periode + '.xlsx'));
+
+  DriveApp.getFileById(newSs.getId()).setTrashed(true);
+
+  return { success: true, url: file.getUrl() };
+}
+
+</script>
+<script>
+// ===== Setting.gs =====
+/**
+ * SETTING.GS
+ * Pengaturan aplikasi: logo, nama perusahaan, tema, kurs, timezone, warna,
+ * serta backup/restore Spreadsheet.
+ *
+ * Perubahan: saveAppSettings sekarang hanya menerima kunci setting yang dikenal
+ * (daftar di getSemuaKunciSetting_ pada Code.gs), dan kurs wajib lewat updateKursABA
+ * supaya divalidasi dan saldo Peso ikut dihitung ulang.
+ */
+
+function getAppSettings() {
+  return getAllSettings();
+}
+
+function saveAppSettings(settings) {
+  if (!settings || typeof settings !== 'object') return { success: false, message: 'Data tidak valid' };
+  const diizinkan = getSemuaKunciSetting_().filter(k => k !== 'KursABA');
+  const boolKeys = ['NotifikasiAktif', 'SuaraNotifikasiAktif'];
+  const ditolak = [];
+
+  Object.keys(settings).forEach(key => {
+    if (diizinkan.indexOf(key) === -1) { ditolak.push(key); return; }
+    let val = settings[key];
+    if (boolKeys.indexOf(key) !== -1) val = (String(val) === 'false') ? 'false' : 'true';
+    if (key === 'MataUangAnggaran' || /^Mu[A-Z]/.test(key)) val = (String(val) === 'KHR') ? 'KHR' : 'USD';
+    if (key === 'MataUangUtama' || key === 'MataUangKedua') {
+      val = String(val).toUpperCase();
+      if (!isKodeMataUang_(val)) { ditolak.push(key); return; }
+    }
+    setSetting(key, val);
+  });
+
+  if (ditolak.length) return { success: false, message: 'Pengaturan tidak dikenal: ' + ditolak.join(', ') };
+  return { success: true };
+}
+
+/**
+ * Kurs = jumlah Peso untuk 1 Rupiah (mis. 0.0035).
+ * Saldo Peso semua pemilik dana dihitung ulang dari saldo Rupiah (basis tetap).
+ */
+function updateKursABA(kursBaru) {
+  setKurs(kursBaru); // melempar error kalau bukan angka > 0
+  const kurs = Number(kursBaru);
+  const owners = sheetToObjects_('PemilikDana');
+  owners.forEach(o => {
+    updateRowByHeader_('PemilikDana', o._row, { SaldoKHR: Number(o.SaldoUSD) * kurs });
+  });
+  return { success: true, kurs: kurs };
+}
+
+/**
+ * Simpan pengaturan 2 mata uang utama sekaligus:
+ *  data = { utama:'IDR', kedua:'PHP', kurs:0.0035, anggaran:'USD'|'KHR',
+ *           halaman:{ dashboard:'USD', keuangan:'USD', laundry:'KHR', dana:'USD', tabungan:'USD', arsip:'USD' } }
+ * Semua field opsional. Kalau kode mata uang berubah, kurs WAJIB ikut diisi (artinya ikut berubah),
+ * dan saldo mata uang 2 semua pemilik dana dihitung ulang dari saldo mata uang 1.
+ */
+function saveCurrencyConfig(data) {
+  if (!data || typeof data !== 'object') return { success: false, message: 'Data tidak valid' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const utamaLama = getMataUangUtama_(), keduaLama = getMataUangKedua_();
+    const utama = data.utama !== undefined ? String(data.utama).toUpperCase() : utamaLama;
+    const kedua = data.kedua !== undefined ? String(data.kedua).toUpperCase() : keduaLama;
+    if (!isKodeMataUang_(utama) || !isKodeMataUang_(kedua)) return { success: false, message: 'Kode mata uang harus 3 huruf (contoh: IDR, PHP, USD)' };
+    if (utama === kedua) return { success: false, message: 'Dua mata uang utama tidak boleh sama' };
+
+    const berubah = utama !== utamaLama || kedua !== keduaLama;
+    const kurs = Number(data.kurs);
+    if (berubah && !(kurs > 0)) return { success: false, message: 'Mata uang berubah, jadi kurs baru wajib diisi (1 ' + utama + ' = ? ' + kedua + ')' };
+    if (data.kurs !== undefined && data.kurs !== '' && !(kurs > 0)) return { success: false, message: 'Kurs harus berupa angka lebih dari 0' };
+
+    const halaman = data.halaman || {};
+    const halamanSalah = Object.keys(halaman).filter(h => !MU_HALAMAN_[h]);
+    if (halamanSalah.length) return { success: false, message: 'Halaman tidak dikenal: ' + halamanSalah.join(', ') };
+
+    setSetting('MataUangUtama', utama);
+    setSetting('MataUangKedua', kedua);
+    if (kurs > 0) updateKursABA(kurs);
+    if (data.anggaran !== undefined) setSetting('MataUangAnggaran', data.anggaran === 'KHR' ? 'KHR' : 'USD');
+    Object.keys(halaman).forEach(h => setSetting(MU_HALAMAN_[h], halaman[h] === 'KHR' ? 'KHR' : 'USD'));
+    return { success: true, config: getCurrencyConfig() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Kurs terkini seluruh dunia (opsional, tombol "Ambil kurs terkini").
+ * Memakai layanan gratis open.er-api.com. Butuh izin akses eksternal; kalau gagal,
+ * pengguna tetap bisa mengisi kurs manual. Hasil: { base, rates:{...}, updated }.
+ */
+function getWorldCurrencyRates(base) {
+  const b = String(base || getMataUangUtama_()).toUpperCase();
+  if (!isKodeMataUang_(b)) return { success: false, message: 'Kode mata uang tidak valid' };
+  try {
+    const res = UrlFetchApp.fetch('https://open.er-api.com/v6/latest/' + b, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return { success: false, message: 'Layanan kurs tidak merespons (HTTP ' + res.getResponseCode() + '). Isi kurs manual.' };
+    const j = JSON.parse(res.getContentText());
+    if (j.result !== 'success') return { success: false, message: 'Layanan kurs menolak permintaan. Isi kurs manual.' };
+    return { success: true, base: b, rates: j.rates, updated: j.time_last_update_utc };
+  } catch (e) {
+    return { success: false, message: 'Tidak bisa mengambil kurs otomatis (' + e.message + '). Isi kurs manual.' };
+  }
+}
+
+/** Membuat salinan (backup) Spreadsheet aktif ke folder Drive yang sama. */
+function backupSpreadsheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const file = DriveApp.getFileById(ss.getId());
+  const backupName = 'Backup_' + ss.getName() + '_' + Utilities.formatDate(new Date(), getSetting('Timezone') || 'Asia/Phnom_Penh', 'yyyyMMdd_HHmmss');
+  const copy = file.makeCopy(backupName, file.getParents().hasNext() ? file.getParents().next() : DriveApp.getRootFolder());
+  return { success: true, url: copy.getUrl(), name: backupName };
+}
+
+/** Mengembalikan daftar backup yang tersedia (berdasarkan prefix nama file). */
+function listBackups() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const prefix = 'Backup_' + ss.getName();
+  const files = DriveApp.searchFiles('title contains "' + prefix.replace(/"/g, '\\"') + '"');
+  const result = [];
+  while (files.hasNext()) {
+    const f = files.next();
+    result.push({ name: f.getName(), url: f.getUrl(), id: f.getId(), date: f.getLastUpdated() });
+  }
+  return result.sort((a, b) => b.date - a.date);
+}
+
+function getUserRole(username) {
+  const users = sheetToObjects_('Users');
+  const user = users.find(u => u.Username === username);
+  return user ? user.Role : 'Viewer';
+}
+
+</script>
+<script>
+// ===== Periodic.gs =====
+/**
+ * PERIODIC.GS
+ * Arsip bulanan, rekap pemasukan/pengeluaran/balance per bulan, dan tabungan manual.
+ *
+ * ATURAN:
+ *  - Tutup bulan memindahkan log Transaksi & LaundryLog ke sheet arsip. Saldo PemilikDana TIDAK diubah.
+ *  - Rekap bulanan (pemasukan, pengeluaran, balance) TIDAK menghitung Dana Titipan.
+ *  - Balance = pemasukan - pengeluaran (boleh minus). Semua dalam Rupiah (mata uang dasar).
+ *  - Tabungan bulanan dicatat manual, hanya bernilai positif (tambah), terpisah dari ledger,
+ *    dan tidak ikut terhapus oleh proses arsip.
+ *  - Kolom tanggal/periode di sheet arsip diset Plain Text supaya tidak diubah jadi objek Date
+ *    oleh Google Sheets. Pembacaan juga toleran kalau ada sel lama yang sudah terlanjur jadi Date.
+ */
+
+const PD_FORMAT_FLAG_ = 'PD_FORMAT_V2';
+
+function ensurePeriodicSheets_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const defs = {
+    'ArsipTransaksi': {
+      headers: ['NomorTransaksi','Tanggal','Jam','IDPemilik','PemilikDana','MataUang','Nominal','SaldoSebelum','SaldoSesudah','Operator','Kategori','Keterangan','Timestamp','Periode'],
+      text: ['A','B','C','M','N']
+    },
+    'ArsipLaundry': {
+      headers: ['ID','Tanggal','BeratKg','Biaya','Catatan','Periode'],
+      text: ['A','B','F']
+    },
+    'RingkasanBulanan': {
+      headers: ['Periode','JumlahTransaksi','PemasukanRp','PengeluaranRp','JumlahLaundry','BeratLaundryKg','BiayaLaundry','BalanceRp'],
+      text: ['A']
+    },
+    'TabunganBulanan': {
+      headers: ['ID','Periode','Tanggal','TargetRp','NominalRp','Catatan','Timestamp'],
+      text: ['B','C','G']
+    }
+  };
+  const props = PropertiesService.getScriptProperties();
+  const needFormat = props.getProperty(PD_FORMAT_FLAG_) !== '1';
+
+  Object.keys(defs).forEach(name => {
+    let sh = ss.getSheetByName(name);
+    let created = false;
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.appendRow(defs[name].headers);
+      sh.setFrozenRows(1);
+      sh.getRange(1, 1, 1, defs[name].headers.length).setFontWeight('bold').setBackground('#1B4B43').setFontColor('#ffffff');
+      created = true;
+    } else if (name === 'RingkasanBulanan' && sh.getRange(1, 8).getValue() === '') {
+      // sheet versi lama (7 kolom): tambahkan kolom BalanceRp di ujung kanan
+      sh.getRange(1, 8).setValue('BalanceRp').setFontWeight('bold').setBackground('#1B4B43').setFontColor('#ffffff');
+    }
+    if (created || needFormat) {
+      defs[name].text.forEach(c => sh.getRange(c + ':' + c).setNumberFormat('@'));
+    }
+  });
+  if (needFormat) props.setProperty(PD_FORMAT_FLAG_, '1');
+  return ss;
+}
+
+// ---------------- UTILITAS ----------------
+
+function pdTz_() { return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(); }
+function pdAppTz_() { return getSetting('Timezone') || 'Asia/Phnom_Penh'; }
+
+function pdDateText_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, pdTz_(), 'yyyy-MM-dd');
+  return String(v == null ? '' : v);
+}
+function pdTimeText_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, pdTz_(), 'HH:mm:ss');
+  return String(v == null ? '' : v);
+}
+function pdPeriodText_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, pdTz_(), 'yyyy-MM');
+  const s = String(v == null ? '' : v);
+  const m = s.match(/^(\d{4})-(\d{2})/);
+  return m ? m[1] + '-' + m[2] : s;
+}
+function periodKey_(dateText) { const m = String(dateText || '').match(/^(\d{4})-(\d{2})/); return m ? m[1] + '-' + m[2] : ''; }
+function pdCurrentKey_() { return Utilities.formatDate(new Date(), pdAppTz_(), 'yyyy-MM'); }
+function pdRound2_(n) { return Number(Number(n || 0).toFixed(2)); }
+
+function dateRangeForMonth_(key) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key)) throw new Error('Format periode harus YYYY-MM');
+  const parts = key.split('-').map(Number), y = parts[0], m = parts[1];
+  return { start: key + '-01', end: Utilities.formatString('%04d-%02d-%02d', m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1, 1) };
+}
+
+/** Baca satu sheet menjadi array of object (header baris 1), lengkap dengan nomor baris fisik. */
+function pdRead_(name) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const v = sh.getDataRange().getValues();
+  const h = v[0].map(String);
+  const out = [];
+  for (let i = 1; i < v.length; i++) {
+    if (v[i][0] === '' || v[i][0] === null) continue;
+    const o = { _row: i + 1 };
+    h.forEach((k, j) => { o[k] = v[i][j]; });
+    out.push(o);
+  }
+  return out;
+}
+
+/** {IDPemilik: JenisDana} untuk memisahkan Dana Titipan. */
+function pdJenisMap_() {
+  const map = {};
+  sheetToObjects_('PemilikDana').forEach(o => { map[o.ID] = o.JenisDana; });
+  return map;
+}
+function pdToRp_(t, kurs) { return Number(t.Nominal || 0) * (t.MataUang === 'USD' ? 1 : 1 / kurs); }
+
+/** Ringkas daftar transaksi: Dana Titipan tidak dihitung. */
+function pdSummarize_(list, jenisMap, kurs) {
+  let income = 0, expense = 0, count = 0;
+  list.forEach(t => {
+    if (jenisMap[t.IDPemilik] === 'Titipan') return;
+    const n = pdToRp_(t, kurs);
+    if (n > 0) income += n; else if (n < 0) expense += -n;
+    count++;
+  });
+  return { income: pdRound2_(income), expense: pdRound2_(expense), balance: pdRound2_(income - expense), count: count };
+}
+
+/** Hapus baris fisik; baris yang berurutan dihapus sekaligus supaya cepat. */
+function pdDeleteRows_(sheet, rows) {
+  const sorted = rows.slice().sort((a, b) => b - a);
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] - 1) j++;
+    sheet.deleteRows(sorted[j], j - i + 1);
+    i = j + 1;
+  }
+}
+
+/** Nilai teks dari user aman dari formula injection saat ditulis ulang ke sheet. */
+function pdSafeRow_(arr) { return arr.map(v => safeCell_(v)); }
+
+/**
+ * Semua transaksi: arsip + yang masih aktif (tanpa duplikat). Dipakai oleh Laporan.
+ */
+function getAllTransactions_() {
+  const active = sheetToObjects_('Transaksi');
+  const seen = {};
+  active.forEach(t => { seen[String(t.NomorTransaksi)] = true; });
+  const archived = pdRead_('ArsipTransaksi')
+    .filter(o => !seen[String(o.NomorTransaksi)])
+    .map(o => ({
+      NomorTransaksi: o.NomorTransaksi, Tanggal: pdDateText_(o.Tanggal), Jam: pdTimeText_(o.Jam),
+      IDPemilik: o.IDPemilik, PemilikDana: o.PemilikDana, MataUang: o.MataUang, Nominal: o.Nominal,
+      SaldoSebelum: o.SaldoSebelum, SaldoSesudah: o.SaldoSesudah, Operator: o.Operator,
+      Kategori: o.Kategori, Keterangan: o.Keterangan, Timestamp: o.Timestamp
+    }));
+  return archived.concat(active);
+}
+
+// ---------------- TUTUP BULAN / ARSIP ----------------
+
+function closeMonthlyPeriod(key) {
+  key = String(key || '');
+  dateRangeForMonth_(key); // validasi format
+  if (key >= pdCurrentKey_()) {
+    return { success: false, message: 'Bulan yang masih berjalan belum bisa diarsipkan. Pilih bulan yang sudah selesai.' };
+  }
+  ensurePeriodicSheets_();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const at = ss.getSheetByName('ArsipTransaksi'), al = ss.getSheetByName('ArsipLaundry');
+    const srcTx = ss.getSheetByName('Transaksi'), srcLa = ss.getSheetByName('LaundryLog');
+
+    const tx = sheetToObjects_('Transaksi').filter(t => periodKey_(t.Tanggal) === key);
+    const la = sheetToObjects_('LaundryLog').filter(l => periodKey_(l.Tanggal) === key);
+
+    const archivedTxIds = {};
+    pdRead_('ArsipTransaksi').forEach(o => { archivedTxIds[String(o.NomorTransaksi)] = true; });
+    const archivedLaIds = {};
+    pdRead_('ArsipLaundry').forEach(o => { archivedLaIds[String(o.ID)] = true; });
+
+    const txNew = tx.filter(t => !archivedTxIds[String(t.NomorTransaksi)]).map(t => pdSafeRow_([
+      t.NomorTransaksi, t.Tanggal, t.Jam, t.IDPemilik, t.PemilikDana, t.MataUang, t.Nominal,
+      t.SaldoSebelum, t.SaldoSesudah, t.Operator, t.Kategori, t.Keterangan, t.Timestamp, key
+    ]));
+    const laNew = la.filter(l => !archivedLaIds[String(l.ID)]).map(l => pdSafeRow_([
+      l.ID, l.Tanggal, l.BeratKg, l.Biaya, l.Catatan, key
+    ]));
+
+    if (txNew.length) at.getRange(at.getLastRow() + 1, 1, txNew.length, 14).setValues(txNew);
+    if (laNew.length) al.getRange(al.getLastRow() + 1, 1, laNew.length, 6).setValues(laNew);
+    SpreadsheetApp.flush();
+
+    // Hapus baris sumber HANYA kalau barisnya benar-benar sudah ada di arsip.
+    const nowTxIds = {};
+    pdRead_('ArsipTransaksi').forEach(o => { nowTxIds[String(o.NomorTransaksi)] = true; });
+    const nowLaIds = {};
+    pdRead_('ArsipLaundry').forEach(o => { nowLaIds[String(o.ID)] = true; });
+    const delTx = tx.filter(t => nowTxIds[String(t.NomorTransaksi)]).map(t => t._row);
+    const delLa = la.filter(l => nowLaIds[String(l.ID)]).map(l => l._row);
+    if (delTx.length) pdDeleteRows_(srcTx, delTx);
+    if (delLa.length) pdDeleteRows_(srcLa, delLa);
+
+    // Ringkasan bulan: dari data arsip periode ini, Dana Titipan tidak dihitung.
+    const kurs = getKurs(), jenis = pdJenisMap_();
+    const archTx = pdRead_('ArsipTransaksi').filter(o => pdPeriodText_(o.Periode) === key);
+    const sumTx = pdSummarize_(archTx, jenis, kurs);
+    const archLa = pdRead_('ArsipLaundry').filter(o => pdPeriodText_(o.Periode) === key);
+    const laBerat = archLa.reduce((s, o) => s + Number(o.BeratKg || 0), 0);
+    const laBiaya = archLa.reduce((s, o) => s + Number(o.Biaya || 0), 0);
+
+    const sum = ss.getSheetByName('RingkasanBulanan');
+    const line = [key, sumTx.count, sumTx.income, sumTx.expense, archLa.length, pdRound2_(laBerat), pdRound2_(laBiaya), sumTx.balance];
+    const existing = pdRead_('RingkasanBulanan').filter(o => pdPeriodText_(o.Periode) === key)[0];
+    if (existing) sum.getRange(existing._row, 1, 1, line.length).setValues([line]);
+    else sum.getRange(sum.getLastRow() + 1, 1, 1, line.length).setValues([line]);
+
+    return {
+      success: true, periode: key, arsipTransaksi: txNew.length, arsipLaundry: laNew.length,
+      pemasukan: sumTx.income, pengeluaran: sumTx.expense, balance: sumTx.balance, saldoDipertahankan: true,
+      message: 'Catatan bulan ' + key + ' berhasil diarsipkan. Saldo berjalan tidak diubah.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Daftar ringkasan bulan yang sudah diarsipkan (terbaru di atas). */
+function getMonthlyArchives() {
+  ensurePeriodicSheets_();
+  return pdRead_('RingkasanBulanan').map(r => {
+    const income = Number(r.PemasukanRp || 0), expense = Math.abs(Number(r.PengeluaranRp || 0));
+    return {
+      periode: pdPeriodText_(r.Periode), jumlahTransaksi: Number(r.JumlahTransaksi || 0),
+      pemasukan: income, pengeluaran: expense, balance: pdRound2_(income - expense),
+      jumlahLaundry: Number(r.JumlahLaundry || 0), beratLaundry: Number(r.BeratLaundryKg || 0), biayaLaundry: Number(r.BiayaLaundry || 0)
+    };
+  }).sort((a, b) => (a.periode < b.periode ? 1 : -1));
+}
+
+// ---------------- REKAP PLUS/MINUS PER BULAN ----------------
+
+/**
+ * Pemasukan, pengeluaran, dan balance tiap bulan pada satu tahun (Rupiah, tanpa Dana Titipan).
+ * Bulan yang sudah diarsipkan memakai ringkasan yang tersimpan; bulan lain dihitung langsung dari Transaksi.
+ */
+function getAnnualStatistics(year) {
+  ensurePeriodicSheets_();
+  year = String(year || pdCurrentKey_().slice(0, 4));
+  if (!/^\d{4}$/.test(year)) throw new Error('Tahun tidak valid');
+  const kurs = getKurs(), jenis = pdJenisMap_();
+  const labels = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const months = labels.map((l, i) => ({ month: i + 1, label: l, income: 0, expense: 0, balance: 0, count: 0, archived: false }));
+
+  pdRead_('RingkasanBulanan').forEach(r => {
+    const p = pdPeriodText_(r.Periode);
+    if (p.indexOf(year + '-') !== 0) return;
+    const i = Number(p.slice(5, 7)) - 1;
+    if (i < 0 || i > 11) return;
+    months[i].income = Number(r.PemasukanRp || 0);
+    months[i].expense = Math.abs(Number(r.PengeluaranRp || 0));
+    months[i].count = Number(r.JumlahTransaksi || 0);
+    months[i].archived = true;
+  });
+
+  sheetToObjects_('Transaksi').forEach(t => {
+    const p = periodKey_(t.Tanggal);
+    if (p.indexOf(year + '-') !== 0) return;
+    const i = Number(p.slice(5, 7)) - 1;
+    if (i < 0 || i > 11 || months[i].archived) return;
+    if (jenis[t.IDPemilik] === 'Titipan') return;
+    const n = pdToRp_(t, kurs);
+    if (n > 0) months[i].income += n; else if (n < 0) months[i].expense += -n;
+    months[i].count++;
+  });
+
+  months.forEach(m => {
+    m.income = pdRound2_(m.income);
+    m.expense = pdRound2_(m.expense);
+    m.balance = pdRound2_(m.income - m.expense);
+  });
+  const totalIncome = pdRound2_(months.reduce((s, m) => s + m.income, 0));
+  const totalExpense = pdRound2_(months.reduce((s, m) => s + m.expense, 0));
+  return {
+    success: true, year: year, months: months,
+    totalIncome: totalIncome, totalExpense: totalExpense, totalBalance: pdRound2_(totalIncome - totalExpense),
+    transactionCount: months.reduce((s, m) => s + m.count, 0),
+    archivedCount: months.filter(m => m.archived).length,
+    currentKey: pdCurrentKey_()
+  };
+}
+
+// ---------------- TABUNGAN BULANAN (MANUAL) ----------------
+
+function pdSavingsRows_() {
+  ensurePeriodicSheets_();
+  return pdRead_('TabunganBulanan').map(r => ({
+    id: r.ID, periode: pdPeriodText_(r.Periode), tanggal: pdDateText_(r.Tanggal),
+    target: Number(r.TargetRp || 0), nominal: Number(r.NominalRp || 0), catatan: String(r.Catatan || '')
+  }));
+}
+
+/** Catat tabungan. Nominal wajib positif (tabungan hanya bertambah). */
+function saveMonthlySavings(data) {
+  data = data || {};
+  const key = String(data.periode || '');
+  dateRangeForMonth_(key);
+  const amount = Number(data.nominal), target = Number(data.target || 0);
+  if (!isFinite(amount) || amount <= 0) return { success: false, message: 'Nominal tabungan harus lebih dari 0.' };
+  if (!isFinite(target) || target < 0) return { success: false, message: 'Target tidak boleh minus.' };
+
+  // Cegah catatan ganda akibat klik dua kali / koneksi lambat.
+  const dupKey = 'sav_' + Utilities.base64EncodeWebSafe(key + '|' + amount + '|' + String(data.catatan || '')).slice(0, 80);
+  if (CACHE.get(dupKey)) return { success: false, message: 'Catatan yang sama baru saja disimpan.' };
+
+  ensurePeriodicSheets_();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('TabunganBulanan');
+  const id = 'SAV-' + key + '-' + Utilities.getUuid().slice(0, 8);
+  const date = Utilities.formatDate(new Date(), pdAppTz_(), 'yyyy-MM-dd');
+  const row = pdSafeRow_([id, key, date, target, amount, String(data.catatan || ''), new Date().toISOString()]);
+  sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  CACHE.put(dupKey, '1', 10);
+  return { success: true, id: id, periode: key, nominal: amount, target: target, info: 'Tabungan tercatat. Saldo utama tidak berubah.' };
+}
+
+/** Catatan tabungan pada satu bulan. */
+function getMonthlySavings(key) {
+  key = String(key || '');
+  return pdSavingsRows_().filter(r => r.periode === key);
+}
+
+/**
+ * Ringkasan tabungan: total seluruh waktu, tahun ini, bulan ini, dan rekap per bulan.
+ * Hanya penambahan (tidak ada nilai minus).
+ */
+function getSavingsOverview() {
+  const rows = pdSavingsRows_();
+  const nowKey = pdCurrentKey_(), yr = nowKey.slice(0, 4);
+  const byMonth = {};
+  let total = 0, thisYear = 0;
+  rows.forEach(r => {
+    total += r.nominal;
+    if (r.periode.indexOf(yr + '-') === 0) thisYear += r.nominal;
+    if (!byMonth[r.periode]) byMonth[r.periode] = { periode: r.periode, nominal: 0, target: 0, count: 0 };
+    const m = byMonth[r.periode];
+    m.nominal += r.nominal;
+    m.count++;
+    if (r.target > 0) m.target = r.target; // satu target per bulan: pakai yang terakhir diisi
+  });
+  const months = Object.keys(byMonth).map(k => byMonth[k]).sort((a, b) => (a.periode < b.periode ? 1 : -1));
+  months.forEach(m => { m.nominal = pdRound2_(m.nominal); });
+  return {
+    success: true,
+    total: pdRound2_(total), thisYear: pdRound2_(thisYear),
+    thisMonth: pdRound2_(byMonth[nowKey] ? byMonth[nowKey].nominal : 0),
+    year: yr, currentKey: nowKey, monthCount: months.length, entryCount: rows.length, months: months
+  };
+}
+
+// ---------------- ARSIP OTOMATIS ----------------
+
+/** Pasang trigger bulanan tanggal 1 pukul 02.00 (zona waktu aplikasi). */
+function installMonthlyArchiveTrigger() {
+  const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'monthlyArchiveAutoRun');
+  if (!exists) {
+    const builder = ScriptApp.newTrigger('monthlyArchiveAutoRun').timeBased().onMonthDay(1).atHour(2);
+    try { builder.inTimezone(pdAppTz_()).create(); } catch (e) { builder.create(); }
+  }
+  return { success: true, alreadyInstalled: exists, message: exists ? 'Arsip otomatis sudah aktif.' : 'Arsip otomatis aktif setiap tanggal 1 sekitar pukul 02.00.' };
+}
+
+function monthlyArchiveAutoRun() {
+  const cur = pdCurrentKey_().split('-').map(Number);
+  const key = cur[1] === 1 ? (cur[0] - 1) + '-12' : cur[0] + '-' + String(cur[1] - 1).padStart(2, '0');
+  return closeMonthlyPeriod(key);
+}
+
+</script>
+<script>
+// ===== Attendance.gs =====
+/**
+ * ATTENDANCE.GS
+ * Absen masuk/pulang, izin/sakit/alpha, dan statistik kehadiran.
+ */
+
+const JAM_MASUK_STANDAR = '08:00:00';
+
+/** Jalankan fungsi di dalam lock supaya dua perangkat tidak bisa menulis absen ganda bersamaan. */
+function withLock_(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+function absenMasuk(idKaryawan, namaKaryawan) {
+  return withLock_(() => absenMasuk_(idKaryawan, namaKaryawan));
+}
+
+function absenMasuk_(idKaryawan, namaKaryawan) {
+  const { tanggal, jam, hari, timestamp } = nowParts_();
+  const sudahAbsen = sheetToObjects_('Absensi').find(a => a.IDKaryawan === idKaryawan && a.Tanggal === tanggal);
+  if (sudahAbsen) return { success: false, message: 'Karyawan sudah absen masuk hari ini' };
+
+  const status = jam > JAM_MASUK_STANDAR ? 'Terlambat' : 'Hadir';
+
+  appendRowByHeader_('Absensi', {
+    ID: generateId_('ATT'),
+    IDKaryawan: idKaryawan,
+    Nama: namaKaryawan,
+    Hari: hari,
+    Tanggal: tanggal,
+    JamMasuk: jam,
+    JamPulang: '',
+    LamaKerja: '',
+    Status: status,
+    Timestamp: timestamp
+  });
+  return { success: true, status };
+}
+
+function absenPulang(idKaryawan) {
+  return withLock_(() => absenPulang_(idKaryawan));
+}
+
+function absenPulang_(idKaryawan) {
+  const { tanggal, jam } = nowParts_();
+  const list = sheetToObjects_('Absensi');
+  const record = list.find(a => a.IDKaryawan === idKaryawan && a.Tanggal === tanggal);
+  if (!record) return { success: false, message: 'Belum absen masuk hari ini' };
+  // 🔧 Izin/Sakit/Alpha tidak punya jam masuk -> tidak bisa absen pulang (dulu hasilnya 'NaN jam NaN menit')
+  if (!record.JamMasuk) return { success: false, message: 'Hari ini tercatat ' + record.Status + ', tidak bisa absen pulang' };
+  if (record.JamPulang) return { success: false, message: 'Sudah absen pulang' };
+
+  const lamaKerja = hitungDurasi_(record.JamMasuk, jam);
+  updateRowByHeader_('Absensi', record._row, { JamPulang: jam, LamaKerja: lamaKerja });
+  return { success: true, lamaKerja };
+}
+
+function catatIzinSakitAlpha(idKaryawan, namaKaryawan, jenisStatus) {
+  return withLock_(() => catatIzinSakitAlpha_(idKaryawan, namaKaryawan, jenisStatus));
+}
+
+function catatIzinSakitAlpha_(idKaryawan, namaKaryawan, jenisStatus) {
+  // jenisStatus: 'Izin' | 'Sakit' | 'Alpha'
+  if (['Izin', 'Sakit', 'Alpha'].indexOf(jenisStatus) === -1) return { success: false, message: 'Status tidak valid' };
+  const { tanggal, hari, timestamp } = nowParts_();
+  const sudahAda = sheetToObjects_('Absensi').find(a => a.IDKaryawan === idKaryawan && a.Tanggal === tanggal);
+  if (sudahAda) return { success: false, message: 'Sudah ada catatan absensi hari ini' };
+
+  appendRowByHeader_('Absensi', {
+    ID: generateId_('ATT'),
+    IDKaryawan: idKaryawan,
+    Nama: namaKaryawan,
+    Hari: hari,
+    Tanggal: tanggal,
+    JamMasuk: '',
+    JamPulang: '',
+    LamaKerja: '',
+    Status: jenisStatus,
+    Timestamp: timestamp
+  });
+  return { success: true };
+}
+
+function hitungDurasi_(jamMasuk, jamPulang) {
+  const [h1, m1] = jamMasuk.split(':').map(Number);
+  const [h2, m2] = jamPulang.split(':').map(Number);
+  let menit = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (menit < 0) menit += 24 * 60;
+  const jam = Math.floor(menit / 60);
+  const sisaMenit = menit % 60;
+  return jam + ' jam ' + sisaMenit + ' menit';
+}
+
+function getAttendance(periode, customStart, customEnd) {
+  const list = sheetToObjects_('Absensi');
+  return filterByPeriode_(list, 'Tanggal', periode, customStart, customEnd);
+}
+
+function getAttendanceStats(periode, customStart, customEnd) {
+  const list = getAttendance(periode, customStart, customEnd);
+  const stats = { Hadir: 0, Terlambat: 0, Izin: 0, Sakit: 0, Alpha: 0, total: list.length };
+  list.forEach(a => { if (stats[a.Status] !== undefined) stats[a.Status]++; });
+  return stats;
+}
+
+/** Filter generik berdasarkan periode: hari, minggu, bulan, tahun, custom. */
+function filterByPeriode_(list, fieldTanggal, periode, customStart, customEnd) {
+  const tz = getSetting('Timezone') || 'Asia/Phnom_Penh';
+  const now = new Date();
+  const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+
+  if (periode === 'hari') return list.filter(r => r[fieldTanggal] === today);
+  if (periode === 'custom' && customStart && customEnd) {
+    return list.filter(r => r[fieldTanggal] >= customStart && r[fieldTanggal] <= customEnd);
+  }
+
+  // Hitung "now" dalam komponen tz yang benar, bukan timezone default project
+  const nowStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  const [ny, nm, nd] = nowStr.split('-').map(Number);
+  let start;
+  if (periode === 'minggu') {
+    const dow = new Date(ny, nm - 1, nd).getDay(); // aman krn tanggal sudah dinormalisasi ke tz
+    start = new Date(ny, nm - 1, nd - dow);
+  } else if (periode === 'bulan') {
+    start = new Date(ny, nm - 1, 1);
+  } else if (periode === 'tahun') {
+    start = new Date(ny, 0, 1);
+  }
+  const startStr = Utilities.formatDate(start, tz, 'yyyy-MM-dd');
+  return list.filter(r => r[fieldTanggal] >= startStr && r[fieldTanggal] <= today);
+}
+
+</script>
+<script>
+// ===== Employee.gs =====
+/**
+ * EMPLOYEE.GS
+ * CRUD Master Karyawan.
+ */
+
+function getEmployees(searchTerm) {
+  let list = sheetToObjects_('Karyawan');
+  if (searchTerm) {
+    const term = String(searchTerm).toLowerCase();
+    list = list.filter(e =>
+      String(e.Nama).toLowerCase().includes(term) ||
+      String(e.Jabatan).toLowerCase().includes(term) ||
+      String(e.NomorHP).toLowerCase().includes(term)
+    );
+  }
+  return list;
+}
+
+function addEmployee(data) {
+  if (!data || !data.nama) return { success: false, message: 'Nama wajib diisi' };
+  const id = generateId_('EMP');
+  appendRowByHeader_('Karyawan', {
+    ID: id,
+    Foto: data.foto || '',
+    Nama: data.nama,
+    NomorHP: data.nomorHp,
+    Alamat: data.alamat,
+    Jabatan: data.jabatan,
+    Status: 'Aktif',
+    TanggalBergabung: data.tanggalBergabung || nowParts_().tanggal
+  });
+  return { success: true, id };
+}
+
+function updateEmployee(id, data) {
+  const list = sheetToObjects_('Karyawan');
+  const emp = list.find(e => e.ID === id);
+  if (!emp) return { success: false, message: 'Karyawan tidak ditemukan' };
+  updateRowByHeader_('Karyawan', emp._row, {
+    Foto: data.foto !== undefined ? data.foto : emp.Foto,
+    Nama: data.nama || emp.Nama,
+    NomorHP: data.nomorHp || emp.NomorHP,
+    Alamat: data.alamat || emp.Alamat,
+    Jabatan: data.jabatan || emp.Jabatan,
+    TanggalBergabung: data.tanggalBergabung || emp.TanggalBergabung
+  });
+  return { success: true };
+}
+
+function deleteEmployee(id) {
+  const list = sheetToObjects_('Karyawan');
+  const emp = list.find(e => e.ID === id);
+  if (!emp) return { success: false, message: 'Karyawan tidak ditemukan' };
+  deleteRow_('Karyawan', emp._row);
+  return { success: true };
+}
+
+function setEmployeeStatus(id, status) {
+  const list = sheetToObjects_('Karyawan');
+  const emp = list.find(e => e.ID === id);
+  if (!emp) return { success: false, message: 'Karyawan tidak ditemukan' };
+  updateRowByHeader_('Karyawan', emp._row, { Status: status });
+  return { success: true };
+}
+
+</script>
+<script>
+// ===== API.gs =====
+/**
+ * API.GS
+ * Lapisan API: mengubah semua fungsi backend yang SUDAH ADA (Finance.gs,
+ * Attendance.gs, Owner.gs, Laundry.gs, dll) menjadi bisa dipanggil dari LUAR
+ * Apps Script -- misalnya dari frontend yang di-hosting di GitHub Pages --
+ * lewat request POST yang membalas JSON.
+ *
+ * TIDAK ADA fungsi bisnis yang ditulis ulang di sini -- file ini murni ROUTER.
+ *
+ * 🔧 PERUBAHAN DI VERSI INI:
+ *  1) WAJIB LOGIN: semua action (kecuali 'login') butuh token yang valid (lihat Auth.gs).
+ *     Token dikirim di body request, BUKAN di URL, supaya tidak tercatat di log/riwayat.
+ *  2) Semua request (baca & tulis) sekarang lewat POST. doGet hanya cek status,
+ *     tidak lagi menjalankan action apa pun.
+ *  3) Error server dikembalikan dengan flag serverError:true supaya frontend bisa
+ *     membedakannya dari jawaban normal {success:false, message} milik fungsi bisnis.
+ *  4) Respon belum login: {success:false, authError:true} -> frontend menampilkan layar login.
+ */
+
+/** Cek status API saja (tidak membaca data apa pun). */
+function doGet(e) {
+  return jsonOutput_({ success: true, message: 'App Manage API aktif. Gunakan POST.' });
+}
+
+/**
+ * Semua request dari frontend masuk lewat sini.
+ * PENTING: kirim dengan Content-Type 'text/plain' (BUKAN 'application/json')
+ * supaya browser tidak mengirim CORS preflight (OPTIONS) yang TIDAK didukung Apps Script.
+ * Body: { action: '...', params: {...}, token: '...' }
+ */
+function doPost(e) {
+  let body = {};
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return jsonOutput_({ success: false, serverError: true, message: 'Body request tidak valid (bukan JSON)' });
+  }
+  return handleApiRequest_(body.action, body.params || {}, body.token);
+}
+
+/**
+ * Router utama: memetakan nama "action" ke fungsi backend yang sudah ada.
+ * Daftar ini sengaja eksplisit supaya tidak ada celah memanggil fungsi sembarangan dari luar.
+ */
+function handleApiRequest_(action, params, token) {
+  params = params || {};
+  try {
+    // ---------- AUTH (tanpa token) ----------
+    if (action === 'login') return jsonOutput_(apiLogin_(params.pin));
+
+    // ---------- SEMUA YANG LAIN WAJIB LOGIN ----------
+    if (!isValidToken_(token)) {
+      return jsonOutput_({ success: false, authError: true, message: 'Sesi berakhir, silakan login lagi' });
+    }
+    if (action === 'logout') {
+      revokeToken_(token);
+      return jsonOutput_({ success: true });
+    }
+    if (action === 'changePin') return jsonOutput_(apiChangePin_(params.oldPin, params.newPin));
+
+    let result;
+    switch (action) {
+      // ---------- DASHBOARD ----------
+      case 'getDashboardData': result = getDashboardData(); break;
+      case 'getAttendanceChartData': result = getAttendanceChartData(); break;
+      case 'getIncomeExpenseChartData': result = getIncomeExpenseChartData(); break;
+      case 'getFinanceChartData': result = getFinanceChartData(); break;
+      case 'getOwnerPieChartData': result = getOwnerPieChartData(params.jenisDana); break;
+
+      // ---------- KARYAWAN ----------
+      case 'getEmployees': result = getEmployees(params.term || ''); break;
+      case 'addEmployee': result = addEmployee(params.data); break;
+      case 'updateEmployee': result = updateEmployee(params.id, params.data); break;
+      case 'deleteEmployee': result = deleteEmployee(params.id); break;
+      case 'setEmployeeStatus': result = setEmployeeStatus(params.id, params.status); break;
+
+      // ---------- ABSENSI ----------
+      case 'getAttendance': result = getAttendance(params.periode, params.customStart, params.customEnd); break;
+      case 'getAttendanceStats': result = getAttendanceStats(params.periode, params.customStart, params.customEnd); break;
+      case 'absenMasuk': result = absenMasuk(params.idKaryawan, params.namaKaryawan); break;
+      case 'absenPulang': result = absenPulang(params.idKaryawan); break;
+      case 'catatIzinSakitAlpha': result = catatIzinSakitAlpha(params.idKaryawan, params.namaKaryawan, params.jenisStatus); break;
+
+      // ---------- PEMILIK DANA ----------
+      case 'getOwners': result = getOwners(params.onlyActive); break;
+      case 'addOwner': result = addOwner(params.data); break;
+      case 'updateOwner': result = updateOwner(params.id, params.data); break;
+      case 'deleteOwner': result = deleteOwner(params.id); break;
+      case 'setOwnerStatus': result = setOwnerStatus(params.id, params.status); break;
+
+      // ---------- KEUANGAN ----------
+      case 'getFinanceSummary': result = getFinanceSummary(); break;
+      case 'addTransaction': result = addTransaction(params.ownerId, params.currency, params.nominal, params.kategori, params.keterangan, params.operator); break;
+      case 'deleteTransaction': result = deleteTransaction(params.nomorTransaksi); break;
+      case 'getTransactions': result = getTransactions(params.filter); break;
+      case 'getBudgetStatus': result = getBudgetStatus(); break;
+      case 'getSavingsProjection': result = getSavingsProjection(); break;
+      case 'getGlobalWarningStatus': result = getGlobalWarningStatus(); break;
+      case 'closeMonthlyPeriod': result = closeMonthlyPeriod(params.periode); break;
+      case 'getAnnualStatistics': result = getAnnualStatistics(params.tahun); break;
+      case 'saveMonthlySavings': result = saveMonthlySavings(params.data); break;
+      case 'getMonthlySavings': result = getMonthlySavings(params.periode); break;
+      case 'getSavingsOverview': result = getSavingsOverview(); break;
+      case 'getMonthlyArchives': result = getMonthlyArchives(); break;
+      case 'installMonthlyArchiveTrigger': result = installMonthlyArchiveTrigger(); break;
+
+      // ---------- LAUNDRY ----------
+      case 'getLaundryStatus': result = getLaundryStatus(); break;
+      case 'getLaundrySettings': result = getLaundrySettings(); break;
+      case 'saveLaundrySettings': result = saveLaundrySettings(params.data); break;
+      case 'addLaundryLog': result = addLaundryLog(params.beratKg, params.biayaRiel, params.catatan); break;
+
+      // ---------- LAPORAN ----------
+      case 'getAttendanceReport': result = getAttendanceReport(params.periode, params.customStart, params.customEnd); break;
+      case 'getFinanceReport': result = getFinanceReport(params.periode, params.customStart, params.customEnd); break;
+      case 'exportReportToPDF':
+        result = exportReportToPDF(params.jenisLaporan, params.periode, params.customStart, params.customEnd);
+        break;
+      case 'exportReportToExcel':
+        result = exportReportToExcel(params.jenisLaporan, params.periode, params.customStart, params.customEnd);
+        break;
+
+      // ---------- PENGATURAN ----------
+      case 'getAppSettings': result = getAppSettings(); break;
+      case 'saveAppSettings': result = saveAppSettings(params.data); break;
+      case 'updateKursABA': result = updateKursABA(params.kurs); break;
+      // Aksi tambahan dari API lama kamu (hanya jalan kalau fungsinya memang ada di project;
+      // kalau tidak ada, balasannya error server biasa dan tidak merusak aksi lain)
+      case 'updateKurs': result = updateKursABA(params.kurs); break;
+      case 'getCurrencyConfig': result = getCurrencyConfig(); break;
+      case 'getWorldCurrencyRates': result = getWorldCurrencyRates(params.base); break;
+      case 'saveCurrencyConfig': result = saveCurrencyConfig(params.data); break;
+      case 'backupSpreadsheet': result = backupSpreadsheet(); break;
+      case 'listBackups': result = listBackups(); break;
+
+      default:
+        return jsonOutput_({ success: false, message: 'Aksi tidak dikenal: ' + action });
+    }
+    return jsonOutput_(result);
+  } catch (err) {
+    return jsonOutput_({ success: false, serverError: true, message: 'Server error: ' + err.message });
+  }
+}
+
+/** Membungkus data jadi response JSON standar. */
+function jsonOutput_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+</script>
+<script>
+/**
+ * CHARTS.JS - Grafik SVG ringan (tanpa Google Charts), jalan offline.
+ *   Charts.column(el, labels, [{name,color,values}], {height})
+ *   Charts.area(el, labels, values, {color,height})
+ *   Charts.donut(el, [{label,value,color}], {height})
+ */
+const Charts = (function () {
+  const NS = 'http://www.w3.org/2000/svg';
+  const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+  const esc2 = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const TXT = 'fill:var(--text-mute);font-size:9px;font-family:inherit';
+
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+  function empty(el, h, text) {
+    el.innerHTML = '<div style="height:' + h + 'px;display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:12px;">' + esc2(text || 'Belum ada data') + '</div>';
+  }
+  function frame(el, W, H, inner) {
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" xmlns="' + NS + '" role="img" style="display:block">' + inner + '</svg>';
+  }
+  function axisY(W, L, T, B, H, min, max, ticks) {
+    let s = '';
+    for (let i = 0; i <= ticks; i++) {
+      const v = min + (max - min) * i / ticks, y = T + (H - T - B) * (1 - i / ticks);
+      s += '<line x1="' + L + '" x2="' + (W - 6) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" style="stroke:var(--border)" stroke-width="1"/>';
+      s += '<text x="' + (L - 4) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="end" style="' + TXT + '">' + esc2(compact.format(v)) + '</text>';
+    }
+    return s;
+  }
+  function axisX(labels, W, L, H, step, xAt) {
+    let s = '';
+    labels.forEach((l, i) => { if (i % step === 0) s += '<text x="' + xAt(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" style="' + TXT + '">' + esc2(l) + '</text>'; });
+    return s;
+  }
+
+  function column(el, labels, series, opt) {
+    opt = opt || {}; const H = opt.height || 210, W = 340, L = 38, T = 26, B = 22;
+    const all = [].concat.apply([], series.map(s => s.values));
+    const max = niceMax(Math.max.apply(null, all.concat([0])));
+    if (!labels.length || all.every(v => !v)) { empty(el, H); return; }
+    const n = labels.length, slot = (W - L - 6) / n, bw = Math.max(2, Math.min(14, (slot - 4) / series.length));
+    const y = v => T + (H - T - B) * (1 - v / max);
+    let g = axisY(W, L, T, B, H, 0, max, 4);
+    labels.forEach((lb, i) => {
+      series.forEach((s, k) => {
+        const v = s.values[i] || 0, x = L + slot * i + (slot - bw * series.length) / 2 + bw * k;
+        const h = Math.max(0, (H - B) - y(v));
+        if (v) g += '<rect x="' + x.toFixed(1) + '" y="' + y(v).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2" fill="' + s.color + '"><title>' + esc2(lb + ' · ' + s.name + ': ' + (opt.fmt ? opt.fmt(v) : compact.format(v))) + '</title></rect>';
+      });
+    });
+    g += axisX(labels, W, L, H, n > 10 ? 2 : 1, i => L + slot * i + slot / 2);
+    let lg = '', lx = L;
+    series.forEach(s => { lg += '<rect x="' + lx + '" y="8" width="8" height="8" rx="2" fill="' + s.color + '"/><text x="' + (lx + 12) + '" y="15.5" style="' + TXT + '">' + esc2(s.name) + '</text>'; lx += 18 + s.name.length * 5.2; });
+    frame(el, W, H, lg + g);
+  }
+
+  function area(el, labels, values, opt) {
+    opt = opt || {}; const H = opt.height || 190, W = 340, L = 42, T = 12, B = 22, color = opt.color || '#1B4B43';
+    if (!values.length || values.every(v => !v)) { empty(el, H); return; }
+    let mx = Math.max.apply(null, values.concat([0])), mn = Math.min.apply(null, values.concat([0]));
+    mx = mx > 0 ? niceMax(mx) : 0; mn = mn < 0 ? -niceMax(-mn) : 0; if (mx === mn) mx = mn + 1;
+    const n = values.length, x = i => n === 1 ? (L + W - 6) / 2 : L + (W - L - 10) * i / (n - 1);
+    const y = v => T + (H - T - B) * (1 - (v - mn) / (mx - mn));
+    let g = axisY(W, L, T, B, H, mn, mx, 4);
+    const pts = values.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1));
+    const base = y(0).toFixed(1);
+    g += '<polygon points="' + x(0).toFixed(1) + ',' + base + ' ' + pts.join(' ') + ' ' + x(n - 1).toFixed(1) + ',' + base + '" fill="' + color + '" opacity="0.18"/>';
+    g += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round"/>';
+    values.forEach((v, i) => { g += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="2.5" fill="' + color + '"><title>' + esc2(labels[i] + ': ' + (opt.fmt ? opt.fmt(v) : compact.format(v))) + '</title></circle>'; });
+    g += axisX(labels, W, L, H, Math.ceil(n / 7), x);
+    frame(el, W, H, g);
+  }
+
+  function donut(el, items, opt) {
+    opt = opt || {}; const H = opt.height || 210, W = 340;
+    const data = items.filter(i => i.value > 0);
+    const total = data.reduce((s, i) => s + i.value, 0);
+    if (!total) { empty(el, H); return; }
+    const cx = 100, cy = H / 2, R = Math.min(88, H / 2 - 8), r = R * 0.55;
+    let a0 = -Math.PI / 2, g = '';
+    data.forEach(d => {
+      const frac = d.value / total, a1 = a0 + Math.min(frac, 0.99999) * 2 * Math.PI, large = frac > 0.5 ? 1 : 0;
+      const p = (a, rad) => (cx + rad * Math.cos(a)).toFixed(1) + ',' + (cy + rad * Math.sin(a)).toFixed(1);
+      g += '<path d="M' + p(a0, R) + ' A' + R + ',' + R + ' 0 ' + large + ' 1 ' + p(a1, R) + ' L' + p(a1, r) + ' A' + r + ',' + r + ' 0 ' + large + ' 0 ' + p(a0, r) + ' Z" fill="' + d.color + '"><title>' + esc2(d.label + ': ' + (opt.fmt ? opt.fmt(d.value) : compact.format(d.value)) + ' (' + Math.round(frac * 100) + '%)') + '</title></path>';
+      a0 = a1;
+    });
+    const shown = data.slice(0, 8);
+    shown.forEach((d, i) => {
+      const yy = Math.max(16, cy - shown.length * 9) + i * 18;
+      g += '<rect x="212" y="' + (yy - 8) + '" width="9" height="9" rx="2" fill="' + d.color + '"/><text x="226" y="' + yy + '" style="' + TXT.replace('9px', '10px') + '">' + esc2(String(d.label).slice(0, 14)) + ' · ' + Math.round(d.value / total * 100) + '%</text>';
+    });
+    frame(el, W, H, g);
+  }
+
+  return { column, area, donut };
+})();
+
+</script>
+<script>
+/**
+ * APP.JS - Penghubung aplikasi web: akun Supabase, sinkron data, offline, dan pemanggil fungsi lokal.
+ * Dimuat SETELAH shim.js dan semua file logika (.gs) serta Script.html.
+ */
+
+// Konfigurasi Supabase (SUPABASE_URL, SUPABASE_ANON_KEY) ada di config.js
+
+const Session = { user: null, email: '', offlineMode: false };
+let sb = null;
+
+// ---------------- penyimpanan lokal (IndexedDB) ----------------
+function idb_() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('officeapp', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbGet(key) {
+  return idb_().then(db => new Promise((res, rej) => {
+    const r = db.transaction('kv').objectStore('kv').get(key);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  })).catch(() => undefined);
+}
+function idbSet(key, val) {
+  return idb_().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error);
+  })).catch(() => false);
+}
+function idbDel(key) {
+  return idb_().then(db => new Promise((res) => {
+    const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(key); tx.oncomplete = () => res(true); tx.onerror = () => res(false);
+  })).catch(() => false);
+}
+
+// ---------------- sinkron ke Supabase ----------------
+const Sync = { state: 'idle', flushing: false, timer: null, retry: null, msg: '' };
+
+function setSyncState_(s, msg) { Sync.state = s; Sync.msg = msg || ''; renderSyncBadge_(); }
+
+function renderSyncBadge_() {
+  const el = document.getElementById('syncBadge'); if (!el) return;
+  const n = Store.pendingCount();
+  const online = navigator.onLine;
+  let ikon = 'cloud_done', txt = 'Tersinkron', cls = 'ok';
+  if (Sync.state === 'error') { ikon = 'cloud_off'; txt = 'Gagal sinkron'; cls = 'err'; }
+  else if (!online || Sync.state === 'offline') { ikon = 'cloud_off'; txt = n ? ('Offline · ' + n + ' menunggu') : 'Offline'; cls = 'off'; }
+  else if (Sync.state === 'syncing' || n) { ikon = 'sync'; txt = n ? ('Menyinkronkan · ' + n) : 'Menyinkronkan'; cls = 'busy'; }
+  el.className = 'sync-badge ' + cls;
+  el.title = Sync.msg || txt;
+  el.innerHTML = '<span class="material-symbols-outlined">' + ikon + '</span><span>' + txt + '</span>';
+}
+
+let saveSnapTimer_ = null;
+function scheduleSnapshot_() {
+  clearTimeout(saveSnapTimer_);
+  saveSnapTimer_ = setTimeout(saveSnapshot_, 400);
+}
+function saveSnapshot_() {
+  if (!Store.user()) return Promise.resolve();
+  return idbSet('snap_' + Store.user(), Store.snapshot());
+}
+
+function isNetworkError_(e) {
+  const m = String((e && (e.message || e.details)) || e || '');
+  return !navigator.onLine || /failed to fetch|networkerror|network request failed|load failed|timeout|fetch/i.test(m);
+}
+
+async function flushNow() {
+  if (Sync.flushing || !sb || !Store.user()) return;
+  if (!Store.hasPending()) { setSyncState_('ok'); return; }
+  if (!navigator.onLine) { setSyncState_('offline'); return; }
+  Sync.flushing = true; setSyncState_('syncing');
+  try {
+    const uid = Store.user();
+    for (let guard = 0; guard < 1000 && Store.hasPending(); guard++) {
+      const { ups, dels } = Store.takeBatch(300, 300);
+      if (!ups.length && !dels.length) break;
+      if (ups.length) {
+        const payload = ups.map(u => ({ id: u.id, user_id: uid, sheet: u.sheet, ord: u.ord, cells: u.cells }));
+        const { error } = await sb.from('rows').upsert(payload, { onConflict: 'id' });
+        if (error) throw error;
+        Store.ackUps(ups);
+      }
+      if (dels.length) {
+        const { error } = await sb.from('rows').delete().in('id', dels);
+        if (error) throw error;
+        Store.ackDels(dels);
+      }
+    }
+    setSyncState_('ok');
+  } catch (e) {
+    console.warn('[sync]', e);
+    if (isNetworkError_(e)) setSyncState_('offline', 'Tidak ada koneksi. Data aman di perangkat dan akan dikirim otomatis.');
+    else setSyncState_('error', (e && e.message) || 'Gagal sinkron');
+    scheduleRetry_();
+  } finally {
+    Sync.flushing = false;
+    scheduleSnapshot_();
+    renderSyncBadge_();
+  }
+}
+
+function scheduleRetry_() {
+  clearTimeout(Sync.retry);
+  Sync.retry = setTimeout(flushNow, 15000);
+}
+function scheduleFlush_() {
+  clearTimeout(Sync.timer);
+  Sync.timer = setTimeout(flushNow, 700);
+}
+
+async function pullAll_() {
+  const uid = Store.user(); let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await sb.from('rows').select('id,sheet,ord,cells')
+      .eq('user_id', uid).order('ord', { ascending: true }).order('id', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < 1000) break;
+    from += 1000;
+  }
+  Store.loadFromServer(all);
+}
+
+// perubahan data -> simpan snapshot lokal + jadwalkan kirim ke server
+Store.onChange(() => { scheduleSnapshot_(); scheduleFlush_(); renderSyncBadge_(); });
+window.addEventListener('online', () => { renderSyncBadge_(); flushNow(); });
+window.addEventListener('offline', () => renderSyncBadge_());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushNow(); });
+
+// ---------------- sesi & akun ----------------
+const ADA_KONFIG = () => typeof SUPABASE_URL !== 'undefined' && /^https:\/\/.+\.supabase\.co/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20 && SUPABASE_ANON_KEY.indexOf('ISI_') !== 0;
+
+function getToken_() { return Session.user ? 'local' : ''; }      // kompatibilitas kode lama
+function authMsg_(t, ok) {
+  const el = document.getElementById('authMsg'); if (!el) return;
+  el.textContent = t || ''; el.className = 'auth-msg' + (t ? (ok ? ' ok' : ' err') : '');
+}
+function authErr_(e) {
+  const m = String((e && e.message) || e || '');
+  if (/invalid login/i.test(m)) return 'Email atau password salah.';
+  if (/already registered|already been registered/i.test(m)) return 'Email ini sudah terdaftar. Silakan masuk.';
+  if (/at least 6|weak/i.test(m)) return 'Password minimal 6 karakter.';
+  if (/email not confirmed/i.test(m)) return 'Email belum dikonfirmasi. Cek kotak masuk email Anda.';
+  if (/rate limit|too many/i.test(m)) return 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.';
+  if (isNetworkError_(e)) return 'Tidak ada koneksi internet.';
+  if (/valid email|invalid format/i.test(m)) return 'Format email tidak valid.';
+  return m || 'Terjadi kesalahan.';
+}
+
+let authMode_ = 'login';
+function authSetMode(mode) {
+  authMode_ = mode;
+  const t = { login: ['Masuk', 'Masuk ke akun Anda'], register: ['Daftar', 'Buat akun baru. Data Anda terpisah dari pengguna lain.'], forgot: ['Kirim Link Reset', 'Masukkan email, kami kirim link untuk membuat password baru.'], recovery: ['Simpan Password Baru', 'Buat password baru untuk akun Anda.'] }[mode];
+  document.getElementById('authBtn').textContent = t[0];
+  document.getElementById('authSub').textContent = t[1];
+  document.getElementById('authRow2').style.display = (mode === 'register' || mode === 'recovery') ? '' : 'none';
+  document.getElementById('authRowEmail').style.display = mode === 'recovery' ? 'none' : '';
+  document.getElementById('authRowPass').style.display = mode === 'forgot' ? 'none' : '';
+  document.getElementById('authPass').placeholder = mode === 'recovery' ? 'Password baru' : 'Password';
+  document.getElementById('authTabLogin').classList.toggle('active', mode === 'login');
+  document.getElementById('authTabRegister').classList.toggle('active', mode === 'register');
+  document.getElementById('authForgotLink').style.display = mode === 'login' ? '' : 'none';
+  document.getElementById('authBackLink').style.display = mode === 'forgot' ? '' : 'none';
+  document.getElementById('authTabs').style.display = (mode === 'forgot' || mode === 'recovery') ? 'none' : '';
+  authMsg_('');
+}
+
+function showAuth(msg) {
+  document.getElementById('authScreen').classList.remove('hidden');
+  const c = document.getElementById('content'); if (c) c.style.visibility = 'hidden';
+  if (!ADA_KONFIG()) authMsg_('Aplikasi belum dihubungkan ke Supabase. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di file config.js (lihat PANDUAN).', false);
+  else if (msg) authMsg_(msg, false);
+}
+function hideAuth() {
+  document.getElementById('authScreen').classList.add('hidden');
+  const c = document.getElementById('content'); if (c) c.style.visibility = '';
+}
+
+async function authSubmit(ev) {
+  if (ev) ev.preventDefault();
+  if (!sb) { authMsg_('Supabase belum dikonfigurasi.', false); return; }
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  const pass2 = document.getElementById('authPass2').value;
+  const btn = document.getElementById('authBtn'); btn.disabled = true; authMsg_('');
+  try {
+    if (authMode_ === 'login') {
+      if (!email || !pass) throw new Error('Email dan password wajib diisi.');
+      const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+      if (error) throw error;
+      await startSession_(data.session.user);
+    } else if (authMode_ === 'register') {
+      if (!email || !pass) throw new Error('Email dan password wajib diisi.');
+      if (pass.length < 6) throw new Error('Password minimal 6 karakter.');
+      if (pass !== pass2) throw new Error('Ulangi password tidak sama.');
+      const { data, error } = await sb.auth.signUp({ email, password: pass, options: { emailRedirectTo: location.href.split('#')[0] } });
+      if (error) throw error;
+      if (data.session) await startSession_(data.session.user);
+      else { authSetMode('login'); authMsg_('Akun dibuat. Cek email Anda untuk konfirmasi, lalu masuk.', true); }
+    } else if (authMode_ === 'forgot') {
+      if (!email) throw new Error('Email wajib diisi.');
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.split('#')[0] });
+      if (error) throw error;
+      authMsg_('Link reset password sudah dikirim ke email Anda.', true);
+    } else if (authMode_ === 'recovery') {
+      if (pass.length < 6) throw new Error('Password minimal 6 karakter.');
+      if (pass !== pass2) throw new Error('Ulangi password tidak sama.');
+      const { error } = await sb.auth.updateUser({ password: pass });
+      if (error) throw error;
+      const { data } = await sb.auth.getSession();
+      authSetMode('login');
+      if (data.session) await startSession_(data.session.user);
+    }
+  } catch (e) { authMsg_(authErr_(e), false); }
+  finally { btn.disabled = false; }
+}
+
+async function startSession_(user, offline) {
+  if (Session.user && Session.user.id === user.id && !Session.offlineMode) { hideAuth(); return; }
+  showLoading && showLoading();
+  try {
+    Store.reset(user.id);
+    const snap = await idbGet('snap_' + user.id);
+    if (snap && snap.uid === user.id) Store.restore(snap);
+    let siapData = !!snap;
+    if (navigator.onLine && !offline) {
+      try {
+        await flushNow();
+        if (!Store.hasPending()) { await pullAll_(); siapData = true; await saveSnapshot_(); }
+      } catch (e) {
+        console.warn('[pull]', e);
+        if (!snap) throw e;
+      }
+    }
+    if (!siapData) throw new Error('Butuh koneksi internet untuk memuat data pertama kali di perangkat ini.');
+
+    if (!Store.hasSheet('Pengaturan')) {            // akun baru: siapkan struktur & pengaturan awal
+      initializeSpreadsheet();
+      try { setSetting('Timezone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta'); } catch (e) {}
+      ensurePeriodicSheets_();
+    } else {
+      ensurePeriodicSheets_();
+    }
+    Session.user = user; Session.email = user.email || ''; Session.offlineMode = !!offline;
+    try { localStorage.setItem('oa_last_user', JSON.stringify({ id: user.id, email: user.email || '' })); } catch (e) {}
+    MU.ready = false;
+    hideAuth();
+    refreshAfterLogin_();
+    renderSyncBadge_();
+    autoArchiveCheck_();
+    flushNow();
+  } finally { hideLoading && hideLoading(); }
+}
+
+async function logoutApp() {
+  const ok = async () => {
+    stopGlobalWarningSound();
+    const uid = Store.user();
+    try { await sb.auth.signOut(); } catch (e) {}
+    if (uid) await idbDel('snap_' + uid);
+    try { localStorage.removeItem('oa_last_user'); } catch (e) {}
+    Session.user = null; Session.offlineMode = false; Store.reset(null);
+    const b = document.getElementById('globalWarningBanner'); if (b) b.classList.add('hidden');
+    authSetMode('login'); showAuth();
+  };
+  if (Store.hasPending()) {
+    await flushNow();
+    if (Store.hasPending()) {
+      const r = await Swal.fire({ icon: 'warning', title: 'Ada data belum tersinkron', text: 'Jika keluar sekarang, ' + Store.pendingCount() + ' perubahan yang belum terkirim akan hilang. Sambungkan internet dulu, lalu coba lagi.', showCancelButton: true, confirmButtonText: 'Tetap keluar', cancelButtonText: 'Batal', confirmButtonColor: '#C0392B' });
+      if (!r.isConfirmed) return;
+    }
+  }
+  ok();
+}
+
+function changePasswordUI() {
+  Swal.fire({
+    title: 'Ganti Password',
+    html: '<input id="swPwBaru" class="swal2-input" type="password" placeholder="Password baru (min. 6 karakter)">' +
+          '<input id="swPwBaru2" class="swal2-input" type="password" placeholder="Ulangi password baru">',
+    confirmButtonText: 'Simpan', confirmButtonColor: '#1B4B43', showCancelButton: true, cancelButtonText: 'Batal', focusConfirm: false,
+    preConfirm: () => {
+      const a = document.getElementById('swPwBaru').value, b = document.getElementById('swPwBaru2').value;
+      if (a.length < 6) { Swal.showValidationMessage('Password minimal 6 karakter'); return false; }
+      if (a !== b) { Swal.showValidationMessage('Ulangi password tidak sama'); return false; }
+      return sb.auth.updateUser({ password: a }).then(r => { if (r.error) { Swal.showValidationMessage(authErr_(r.error)); return false; } return true; });
+    }
+  }).then(r => { if (r.isConfirmed && r.value) toastSukses('Password diganti'); });
+}
+
+// Dipanggil halaman lain (kode lama) bila perlu menampilkan login
+function handleAuthError_() { if (!Session.user) showAuth(); }
+function showLoginPrompt_() { if (!Session.user) showAuth(); }
+
+/** Setelah login berhasil: tampilkan lagi konten & muat ulang data halaman aktif. */
+function refreshAfterLogin_() {
+  lockUi_(false);
+  callServer('getDashboardData', [], (data) => {
+    const p = data && data.perusahaan;
+    if (!p) return;
+    const nameEl = document.getElementById('companyName');
+    if (nameEl) nameEl.textContent = p.nama || 'Perusahaan Saya';
+    document.body.setAttribute('data-theme', p.tema === 'dark' ? 'dark' : 'light');
+    const now = new Date();
+    const dayEl = document.getElementById('dayName');
+    const dateEl = document.getElementById('dateDisplay');
+    if (dayEl) dayEl.textContent = now.toLocaleDateString('id-ID', { weekday: 'long' });
+    if (dateEl) dateEl.textContent = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  }, null, true);
+  const aktif = document.querySelector('.page.active');
+  goPage(aktif ? aktif.id.replace('page-', '') : 'dashboard');
+  checkGlobalWarnings();
+}
+
+/** Arsip otomatis: begitu aplikasi dibuka, bulan sebelumnya diarsipkan kalau fitur aktif dan masih ada transaksinya. */
+function autoArchiveCheck_() {
+  try {
+    if (getSetting('ArsipOtomatis') !== 'true') return;
+    const cur = pdCurrentKey_().split('-').map(Number);
+    const key = cur[1] === 1 ? (cur[0] - 1) + '-12' : cur[0] + '-' + String(cur[1] - 1).padStart(2, '0');
+    const ada = sheetToObjects_('Transaksi').some(t => String(t.Tanggal).slice(0, 7) === key) ||
+                sheetToObjects_('LaundryLog').some(l => String(l.Tanggal).slice(0, 7) === key);
+    if (ada) { const r = closeMonthlyPeriod(key); if (r && r.success) toastSukses('Bulan ' + key + ' diarsipkan otomatis'); }
+  } catch (e) { console.warn('[arsip otomatis]', e); }
+}
+
+// ---------------- pemanggil fungsi (pengganti callServer berbasis jaringan) ----------------
+const ASYNC_API = {};
+
+function localCall_(fn, params) {
+  if (ASYNC_API[fn]) return Promise.resolve().then(() => ASYNC_API[fn](params || {}));
+  return Promise.resolve().then(() => {
+    const out = handleApiRequest_(fn, params || {}, 'local');
+    return JSON.parse(out._s);
+  });
+}
+
+function callServer(fnName, args, onSuccess, onError, silent) {
+  args = args || [];
+  if (!Session.user) {
+    if (onError) onError(new Error('Belum login'));
+    return;
+  }
+  let selesai = false;
+  const akhiri = () => { if (!silent && !selesai) { selesai = true; hideLoading(); } };
+  if (!silent) showLoading();
+  localCall_(fnName, buildParams_(fnName, args))
+    .then(data => {
+      akhiri();
+      if (data && data.serverError) throw new Error(data.message || 'Terjadi kesalahan');
+      if (onSuccess) onSuccess(data);
+    })
+    .catch(err => {
+      akhiri();
+      notifyError_(err, silent);
+      if (onError) onError(err);
+    });
+}
+
+// ---------------- BOOT ----------------
+async function bootApp() {
+  authSetMode('login');
+  if (!ADA_KONFIG() || !window.supabase) {
+    showAuth(window.supabase ? '' : 'Tidak bisa memuat pustaka Supabase. Periksa koneksi internet lalu muat ulang.');
+    return;
+  }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') { showAuth(); authSetMode('recovery'); }
+    else if (event === 'SIGNED_OUT' && Session.user && navigator.onLine) { Session.user = null; showAuth('Sesi berakhir, silakan masuk lagi.'); }
+  });
+
+  let user = null;
+  try { const { data } = await sb.auth.getSession(); user = data && data.session && data.session.user; } catch (e) {}
+  if (!user && !navigator.onLine) {              // offline & sesi tidak terbaca: pakai pengguna terakhir di perangkat ini
+    try { const last = JSON.parse(localStorage.getItem('oa_last_user') || 'null'); if (last && last.id) user = { id: last.id, email: last.email }; } catch (e) {}
+    if (user) { try { await startSession_(user, true); } catch (e) { showAuth(String(e.message || e)); } return; }
+  }
+  if (user && !(location.hash || '').includes('type=recovery')) {
+    try { await startSession_(user); }
+    catch (e) { showAuth(String(e.message || e)); }
+  } else if (!user) showAuth();
+}
+
+</script>
+<script>
+/**
+ * OVERRIDES.JS - Pengganti fungsi Apps Script yang bergantung pada layanan Google
+ * (Drive, UrlFetchApp, Trigger, login PIN). Dimuat setelah semua file .gs.
+ */
+
+// --- stub Auth lama (router API.gs masih memanggilnya; login kini lewat akun Supabase) ---
+function isValidToken_() { return true; }
+function apiLogin_() { return { success: false, message: 'Login memakai akun email' }; }
+function apiChangePin_() { return { success: false, message: 'Gunakan Ganti Password' }; }
+function revokeToken_() {}
+function revokeAllTokens_() {}
+
+function lockUi_(lock) {
+  const c = document.getElementById('content');
+  if (c) c.style.visibility = lock ? 'hidden' : '';
+}
+
+function _blobUrl(text, type) { return URL.createObjectURL(new Blob([text], { type: type })); }
+function _tgl() { return new Date().toISOString().slice(0, 10); }
+
+// --- kurs otomatis (opsional) ---
+ASYNC_API.getWorldCurrencyRates = async function (p) {
+  const b = String(p.base || getMataUangUtama_()).toUpperCase();
+  if (!isKodeMataUang_(b)) return { success: false, message: 'Kode mata uang tidak valid' };
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15000);
+    const res = await fetch('https://open.er-api.com/v6/latest/' + b, { signal: ctrl.signal }); clearTimeout(t);
+    if (!res.ok) return { success: false, message: 'Layanan kurs tidak merespons (HTTP ' + res.status + '). Isi kurs manual.' };
+    const j = await res.json();
+    if (j.result !== 'success') return { success: false, message: 'Layanan kurs menolak permintaan. Isi kurs manual.' };
+    return { success: true, base: b, rates: j.rates, updated: j.time_last_update_utc };
+  } catch (e) {
+    return { success: false, message: 'Tidak bisa mengambil kurs otomatis (' + (navigator.onLine ? e.message : 'sedang offline') + '). Isi kurs manual.' };
+  }
+};
+
+// --- ekspor laporan: dibuat langsung di perangkat (tanpa Google Drive) ---
+function _dataLaporan(p) {
+  let headers, data;
+  if (p.jenisLaporan === 'absensi') {
+    const r = getAttendanceReport(p.periode, p.customStart, p.customEnd);
+    headers = ['Nama', 'Hari', 'Tanggal', 'JamMasuk', 'JamPulang', 'LamaKerja', 'Status'];
+    data = r.data.map(x => barisEkspor_(x, headers));
+  } else {
+    const r = getFinanceReport(p.periode, p.customStart, p.customEnd);
+    headers = ['NomorTransaksi', 'Tanggal', 'PemilikDana', 'MataUang', 'Nominal', 'SaldoSesudah', 'Kategori', 'Keterangan'];
+    data = r.data.map(x => barisEkspor_(x, headers));
+  }
+  return { headers, data };
+}
+ASYNC_API.exportReportToExcel = function (p) {
+  const { headers, data } = _dataLaporan(p);
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const csv = '﻿' + [headers].concat(data).map(r => r.map(q).join(',')).join('\r\n');
+  return { success: true, url: _blobUrl(csv, 'text/csv;charset=utf-8'), name: 'Laporan_' + p.jenisLaporan + '_' + _tgl() + '.csv' };
+};
+ASYNC_API.exportReportToPDF = function (p) {
+  const { headers, data } = _dataLaporan(p);
+  const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>Laporan ' + e(p.jenisLaporan) + '</title>' +
+    '<style>body{font-family:Arial,sans-serif;font-size:11px;margin:16px}h2{margin:0 0 8px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#1B4B43;color:#fff}@page{size:A4 landscape;margin:10mm}</style></head><body>' +
+    '<h2>Laporan ' + e(p.jenisLaporan) + ' (' + e(p.periode) + ')</h2><table><tr>' + headers.map(h => '<th>' + e(h) + '</th>').join('') + '</tr>' +
+    data.map(r => '<tr>' + r.map(c => '<td>' + e(c) + '</td>').join('') + '</tr>').join('') +
+    '</table><script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>';
+  return { success: true, url: _blobUrl(html, 'text/html;charset=utf-8'), name: 'Laporan_' + p.jenisLaporan + '.html' };
+};
+
+// --- backup / impor data (JSON) ---
+const FORMAT_BACKUP = 'officeapp-backup-v1';
+const SHEET_DATA = ['Karyawan', 'Absensi', 'PemilikDana', 'Transaksi', 'LaundryLog', 'Pengaturan', 'ArsipTransaksi', 'ArsipLaundry', 'RingkasanBulanan', 'TabunganBulanan'];
+
+ASYNC_API.backupSpreadsheet = function () {
+  const json = JSON.stringify({ format: FORMAT_BACKUP, exportedAt: new Date().toISOString(), sheets: Store.exportAll() });
+  const name = 'Backup_OfficeApp_' + _tgl() + '.json';
+  return { success: true, url: _blobUrl(json, 'application/json'), name: name };
+};
+ASYNC_API.listBackups = function () { return []; };
+
+ASYNC_API.importBackup = function (p) {
+  const d = p.data;
+  if (!d || d.format !== FORMAT_BACKUP || !d.sheets || typeof d.sheets !== 'object') return { success: false, message: 'File bukan backup OfficeApp yang valid.' };
+  const nama = Object.keys(d.sheets).filter(n => SHEET_DATA.indexOf(n) !== -1);
+  if (!nama.length) return { success: false, message: 'File backup tidak berisi data yang dikenali.' };
+  for (const n of nama) {
+    const rows = d.sheets[n];
+    if (!Array.isArray(rows) || !rows.every(r => Array.isArray(r))) return { success: false, message: 'Isi sheet ' + n + ' tidak valid.' };
+  }
+  nama.forEach(n => Store.replaceSheet(n, d.sheets[n]));
+  initializeSpreadsheet();              // lengkapi sheet/pengaturan yang belum ada di file
+  ensurePeriodicSheets_();
+  return { success: true, sheets: nama.length, rows: nama.reduce((s, n) => s + Math.max(0, d.sheets[n].length - 1), 0) };
+};
+
+// --- arsip otomatis: dijalankan saat aplikasi dibuka (pengganti trigger Google) ---
+installMonthlyArchiveTrigger = function () {
+  const sudah = getSetting('ArsipOtomatis') === 'true';
+  setSetting('ArsipOtomatis', 'true');
+  return { success: true, alreadyInstalled: sudah, message: sudah ? 'Arsip otomatis sudah aktif.' : 'Arsip otomatis aktif: setiap aplikasi dibuka di bulan baru, bulan sebelumnya diarsipkan otomatis.' };
+};
+
+ASYNC_API.logout = function () { return { success: true }; };
+
+</script>
+<script>
+  // Service worker: aplikasi bisa dibuka tanpa internet.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  }
+</script>
 </body>
 </html>
