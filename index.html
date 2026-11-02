@@ -559,8 +559,8 @@ body[data-theme="dark"] .stat-mini .num{color:#6FD9A7;}
     <div class="projection-target">Target <strong id="dashProyeksiTarget">Rp0</strong></div>
   </div>
 
-  <div class="section-heading-row"><div class="section-title">Grafik Kehadiran</div><span class="section-hint">7 hari</span></div>
-  <div class="card dashboard-chart"><div id="chartAttendance" style="width:100%;height:190px;"></div></div>
+  <div class="section-heading-row"><div class="section-title">Pemasukan &amp; Pengeluaran</div><span class="section-hint" id="chartIEHint">14 hari</span></div>
+  <div class="card dashboard-chart"><div id="chartAttendance" style="width:100%;height:210px;"></div></div>
 
   <div class="section-heading-row"><div class="section-title">Grafik Keuangan</div><span class="section-hint">Tren saldo</span></div>
   <div class="card dashboard-chart"><div id="chartFinance" style="width:100%;height:210px;"></div></div>
@@ -676,7 +676,7 @@ function renderBudgetKategoriList(list, cur) {
   document.getElementById('balancePesoCard').classList.toggle('merah', data.merahGabungan);
 
   google.charts.setOnLoadCallback(() => {
-  drawAttendanceChart();
+  drawIncomeExpenseChart();
   drawFinanceChart();
   drawOwnerPie();   // ambil data sendiri sesuai tab aktif
 });
@@ -706,6 +706,24 @@ function renderMerahCard(cardId, textId, merah, kekurangan) {
   text.textContent = merah ? ('MERAH -' + fmtHal(Math.abs(Number(kekurangan || 0)), 'dashboard')) : 'AMAN';
   text.style.color = merah ? 'var(--danger)' : 'var(--success)';
 }
+
+  function drawIncomeExpenseChart() {
+    callServer('getIncomeExpenseChartData', [], (rows) => {
+      const k = kodeHalaman('dashboard');
+      document.getElementById('chartIEHint').textContent = '14 hari · ' + k;
+      const arr = [['Tanggal', 'Pemasukan', 'Pengeluaran']];
+      (rows || []).forEach(r => arr.push([r.tanggal.slice(5), toHal(r.masuk, 'dashboard'), toHal(r.keluar, 'dashboard')]));
+      const data = google.visualization.arrayToDataTable(arr);
+      const chart = new google.visualization.ColumnChart(document.getElementById('chartAttendance'));
+      chart.draw(data, {
+        legend: { position: 'top', textStyle: { fontSize: 10 } },
+        colors: ['#2E7D5B', '#C0392B'],
+        chartArea: { width: '88%', height: '66%' },
+        backgroundColor: 'transparent',
+        hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 9 }, format: 'short', minValue: 0 }
+      });
+    }, null, true);
+  }
 
   function drawAttendanceChart() {
     callServer('getAttendanceChartData', [], (rows) => {
@@ -2443,6 +2461,7 @@ const PARAM_MAP = {
   // Dashboard
   getDashboardData: [],
   getAttendanceChartData: [],
+  getIncomeExpenseChartData: [],
   getFinanceChartData: [],
   getOwnerPieChartData: ['jenisDana'],
 
